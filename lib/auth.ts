@@ -4,6 +4,7 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
+import AzureADProvider from 'next-auth/providers/azure-ad'
 import EmailProvider from 'next-auth/providers/email'
 import { PrismaAdapter } from '@next-auth/prisma-adapter'
 import { prisma } from './prisma'
@@ -55,6 +56,20 @@ export const authOptions: NextAuthOptions = {
       },
       from: process.env.EMAIL_FROM || 'noreply@lockerapp.com',
     }),
+
+    // ── Microsoft / Office 365 SSO ──────────────────────────────
+    // Requires an Azure App Registration.
+    // Set AZURE_AD_TENANT_ID to your tenant ID for single-org SSO,
+    // or leave it as 'common' to allow any Microsoft account.
+    ...(process.env.AZURE_AD_CLIENT_ID
+      ? [
+          AzureADProvider({
+            clientId:     process.env.AZURE_AD_CLIENT_ID!,
+            clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+            tenantId:     process.env.AZURE_AD_TENANT_ID ?? 'common',
+          }),
+        ]
+      : []),
 
     // ── Google OAuth (optional) ─────────────────────────────────
     ...(process.env.GOOGLE_CLIENT_ID
