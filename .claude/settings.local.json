@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(node -e \"const D = require\\('dxf-writer'\\); const d = new D\\(\\); console.log\\(Object.getOwnPropertyNames\\(Object.getPrototypeOf\\(d\\)\\).filter\\(k => k !== 'constructor'\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(npx prisma *)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3333)",
+      "Bash(taskkill /PID 6248 /F)",
+      "Bash(taskkill /PID 22804 /F)",
+      "Bash(cmd /c \"taskkill /PID 6248 /F\")",
+      "Bash(cmd /c \"taskkill /PID 22804 /F\")",
+      "Bash(cmd /c \"netstat -ano | findstr :3333 | findstr LISTENING\")",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const m = require\\('jspdf'\\); console.log\\('keys:', Object.keys\\(m\\).join\\(', '\\)\\); console.log\\('type jsPDF:', typeof m.jsPDF\\); console.log\\('type default:', typeof m.default\\);\")",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
+      "Bash(curl -s http://localhost:3000/canvas)",
+      "Read(//d/Code/locker-layout-tool/locker-layout-tool/**)",
+      "Bash(curl -s http://localhost:3003/canvas)",
+      "Bash(curl -s http://localhost:3003/layouts)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next-auth/package.json'\\).version\\)\")",
+      "Bash(cat .env)",
+      "Bash(cat .env.example)",
+      "Bash(curl -v \"http://localhost:3333/layouts\")",
+      "Bash(curl -s \"http://localhost:3333/auth/signin\")",
+      "Bash(curl -s -I \"http://localhost:3333/auth/signin\")",
+      "Bash(tasklist /fi \"PID eq 6248\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:__TRACKED_VAR__/layouts)",
+      "Bash(curl -s \"http://localhost:3000/canvas\" -I)",
+      "Bash(curl -s \"http://localhost:3000/layouts\" -I)",
+      "Bash(npx next *)",
+      "Bash(git init *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)"
+    ]
+  }
+}

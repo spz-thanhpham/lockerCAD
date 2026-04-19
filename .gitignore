@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# env files — never commit secrets
+.env
+.env.local
+.env*.local
+
+# build output
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# prisma
+prisma/dev.db
+prisma/dev.db-journal

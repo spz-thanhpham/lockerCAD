@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Konva canvas cursor overrides */
+.konvajs-content canvas {
+  cursor: default;
+}
+.konvajs-content canvas.cursor-crosshair {
+  cursor: crosshair;
+}
+.konvajs-content canvas.cursor-grab {
+  cursor: grab;
+}
+
+/* Thin scrollbar for panels */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
