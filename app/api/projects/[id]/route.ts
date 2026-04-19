@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // app/api/projects/[id]/route.ts
 // PUT    /api/projects/:id  — rename company
 // DELETE /api/projects/:id  — delete company (cascades layouts)

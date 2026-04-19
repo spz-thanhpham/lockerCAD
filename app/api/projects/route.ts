@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // app/api/projects/route.ts
 // GET  /api/projects  — list companies (projects) owned by current user
 // POST /api/projects  — create a new company

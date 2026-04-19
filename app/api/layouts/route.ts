@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // app/api/layouts/route.ts
 // GET  /api/layouts  — list layouts for current user
 // POST /api/layouts  — create layout (auto-creates a default project if needed)

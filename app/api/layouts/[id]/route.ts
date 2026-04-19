@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // app/api/layouts/[id]/route.ts
 // GET    /api/layouts/:id  — fetch single layout
 // PUT    /api/layouts/:id  — update layout canvasData / name
