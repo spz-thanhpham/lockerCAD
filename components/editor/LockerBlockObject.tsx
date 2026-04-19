@@ -21,6 +21,10 @@ interface Props {
   showDepth?: boolean
   getStageTransform: () => { x: number; y: number; scaleX: number }
   onSelect: (addToSelection: boolean) => void
+  onSelectCell: (blockId: string, colIdx: number, cellIdx: number) => void
+  onSelectLockset: (blockId: string, locksetIdx: number) => void
+  selectedCellKey?: string      // "colIdx:cellIdx" for THIS block, or undefined
+  selectedLocksetIdx?: number   // index of selected lockset tray in THIS block
   onChange: (updated: LockerBlock) => void
   roomX: number
   roomY: number
@@ -47,7 +51,8 @@ function doorInsets(
 }
 
 export default function LockerBlockObjectComponent({
-  block, scale, isSelected, isInMultiSelect, labelStyle, showDepth, getStageTransform, onSelect, onChange,
+  block, scale, isSelected, isInMultiSelect, labelStyle, showDepth, getStageTransform,
+  onSelect, onSelectCell, onSelectLockset, selectedCellKey, selectedLocksetIdx, onChange,
   roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
 }: Props) {
   const ls = labelStyle ?? DEFAULT_LABEL_STYLE
@@ -193,12 +198,24 @@ export default function LockerBlockObjectComponent({
         {/* RIGHT margin */}
         <Rect x={wPx - rightM} y={topH} width={rightM} height={innerH} fill={frameColor} />
 
-        {/* Lockset channels */}
-        {locksetRects.map((lr, i) => (
-          <Rect key={`lock-${i}`}
-            x={lr.x} y={topH} width={lockW} height={innerH}
-            fill={locksetColor} />
-        ))}
+        {/* Lockset tray channels */}
+        {locksetRects.map((lr, i) => {
+          const trayColor  = block.locksets?.[i]?.color ?? locksetColor
+          const isTraySel  = isSelected && selectedLocksetIdx === i
+          return (
+            <Rect key={`lock-${i}`}
+              x={lr.x} y={topH} width={lockW} height={innerH}
+              fill={trayColor}
+              stroke={isTraySel ? '#f59e0b' : 'transparent'}
+              strokeWidth={isTraySel ? 2 : 0}
+              onClick={(e) => {
+                if (!isSelected) return
+                e.cancelBubble = true
+                onSelectLockset(block.id, i)
+              }}
+            />
+          )
+        })}
 
         {/* Columns */}
         {cfg.columns.map((col, ci) => {
@@ -212,29 +229,44 @@ export default function LockerBlockObjectComponent({
             <Group key={col.id} x={colX}>
               <Rect x={0} y={topH} width={colW} height={innerH} fill={COL_BG} />
               {col.cells.map((cell, ri2) => {
-                const cellH = mmToPx(cell.heightMm, scale)
-                const doorH = cellH - doorGap
-                const fill  = cell.color ?? block.color
+                const cellH   = mmToPx(cell.heightMm, scale)
+                const doorH   = cellH - doorGap
+                const fill    = cell.color ?? block.color
+                const thisCellKey = `${ci}:${ri2}`
+                const isCellSel   = isSelected && selectedCellKey === thisCellKey
+                const startY  = cellY
+                const cellRadius = cell.cornerRadius ?? block.cellCornerRadius ?? 1
                 const node = (
-                  <Group key={`${col.id}-${ri2}`}>
-                    <Rect x={li} y={cellY} width={doorW} height={doorH}
-                      fill={fill} stroke={DOOR_STROKE} strokeWidth={0.5} cornerRadius={1} />
+                  <Group key={`${col.id}-${ri2}`}
+                    onClick={(e) => {
+                      if (!isSelected) return  // let block-level click handle first select
+                      e.cancelBubble = true
+                      onSelectCell(block.id, ci, ri2)
+                    }}
+                  >
+                    <Rect x={li} y={startY} width={doorW} height={doorH}
+                      fill={fill} stroke={isCellSel ? '#f59e0b' : DOOR_STROKE}
+                      strokeWidth={isCellSel ? 2 : 0.5} cornerRadius={cellRadius} />
+                    {/* centre crease line */}
                     <Line
-                      points={[li + doorW / 2, cellY + 4, li + doorW / 2, cellY + doorH - 4]}
-                      stroke={DOOR_STROKE} strokeWidth={0.5} opacity={0.35} />
-                    {cell.label && (() => {
-                      const lp = cellLabelProps(ls.position, li, cellY, doorW, doorH)
+                      points={[li + doorW / 2, startY + 4, li + doorW / 2, startY + doorH - 4]}
+                      stroke={DOOR_STROKE} strokeWidth={0.5} opacity={0.35} listening={false} />
+                    {cell.label && cell.showLabel !== false && (() => {
+                      const lp = cellLabelProps(ls.position, li, startY, doorW, doorH)
                       const fs = ls.fontSize > 0 ? ls.fontSize : Math.max(8, doorW * 0.18)
+                      const fc = cell.labelColor ?? ls.color
                       return (
                         <Text {...lp} text={cell.label}
-                          fontSize={fs} fontFamily="monospace" fill={ls.color} />
+                          fontSize={fs} fontFamily="monospace" fill={fc} listening={false} />
                       )
                     })()}
-                    <Text x={li} y={cellY + doorH - 12}
-                      width={doorW} align="center"
-                      text={`${col.widthMm}×${cell.heightMm}`}
-                      fontSize={ls.fontSize > 0 ? Math.max(6, ls.fontSize * 0.7) : Math.max(6, doorW * 0.1)}
-                      fontFamily="monospace" fill={ls.color} opacity={0.5} />
+                    {cell.showDimension !== false && (
+                      <Text x={li} y={startY + doorH - 12}
+                        width={doorW} align="center"
+                        text={`${col.widthMm}×${cell.heightMm}`}
+                        fontSize={ls.fontSize > 0 ? Math.max(6, ls.fontSize * 0.7) : Math.max(6, doorW * 0.1)}
+                        fontFamily="monospace" fill={cell.labelColor ?? ls.color} opacity={0.5} listening={false} />
+                    )}
                   </Group>
                 )
                 cellY += cellH
@@ -248,7 +280,8 @@ export default function LockerBlockObjectComponent({
         {(block.borderWidth ?? 0) > 0 && (
           <Rect width={wPx} height={hPx} fill="transparent"
             stroke={block.borderColor ?? '#334155'}
-            strokeWidth={block.borderWidth} />
+            strokeWidth={block.borderWidth}
+            cornerRadius={block.borderRadius ?? 0} />
         )}
 
         {/* Block label — rendered ABOVE the frame (shifted further up when depth is shown) */}

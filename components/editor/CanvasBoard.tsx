@@ -6,21 +6,16 @@ import { Stage, Layer, Rect } from 'react-konva'
 import type Konva from 'konva'
 import { mmToPx } from '@/lib/canvas-helpers'
 import { registerCapture } from '@/lib/canvas-capture'
-import { DEFAULT_LABEL_STYLE, DEFAULT_OFFICE_INFO, type LockerObject, type LockerBlock, type RoomConfig, type LabelStyle, type OfficeInfo } from '@/types'
+import { DEFAULT_LABEL_STYLE, type LockerObject, type LockerBlock, type RoomConfig, type LabelStyle } from '@/types'
 import LockerObjectComponent from './LockerObject'
 import LockerBlockObjectComponent from './LockerBlockObject'
 import RoomOutline from './RoomOutline'
 import DimensionLine from './DimensionLine'
-import TitleBlock from './TitleBlock'
 
 const CANVAS_PADDING  = 60
 const ZOOM_STEP       = 1.12
 const ZOOM_MIN        = 0.2
 const ZOOM_MAX        = 5
-const TITLE_BLOCK_W   = 260
-const TITLE_BLOCK_GAP = 20
-// Must match TitleBlock.tsx: HEADER_H(28) + 6 rows×ROW(18) + 1
-const TITLE_BLOCK_H   = 137
 
 export interface ExportImageOpts {
   hideDimensions?: boolean
@@ -42,10 +37,12 @@ interface CanvasBoardProps {
   selectedId: string | null
   selectedIds: string[]
   labelStyle?: LabelStyle
-  officeInfo?: OfficeInfo
-  projectName?: string
   onSelectItem: (id: string | null, type: 'locker' | 'block' | null) => void
   onToggleSelectItem: (id: string, type: 'locker' | 'block') => void
+  onSelectCell: (blockId: string, colIdx: number, cellIdx: number) => void
+  onSelectLockset: (blockId: string, locksetIdx: number) => void
+  selectedCellKey?: string      // "blockId:colIdx:cellIdx"
+  selectedLocksetKey?: string   // "blockId:locksetIdx"
   onUpdateLocker: (updated: LockerObject) => void
   onUpdateLockerBlock: (updated: LockerBlock) => void
   showDimensions: boolean
@@ -59,9 +56,8 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
     lockers, lockerBlocks, room,
     selectedId, selectedIds,
     labelStyle = DEFAULT_LABEL_STYLE,
-    officeInfo = DEFAULT_OFFICE_INFO,
-    projectName = '',
-    onSelectItem, onToggleSelectItem,
+    onSelectItem, onToggleSelectItem, onSelectCell, onSelectLockset,
+    selectedCellKey, selectedLocksetKey,
     onUpdateLocker, onUpdateLockerBlock,
     showDimensions, showDepth = false, activeTool = 'select', onZoomChange,
   },
@@ -85,9 +81,8 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
 
   const roomWidthPx  = mmToPx(room.widthMm, room.scale)
   const roomHeightPx = mmToPx(room.depthMm, room.scale)
-  // Extra height below room for title block
   const stageWidth  = Math.max(containerSize.width,  roomWidthPx  + CANVAS_PADDING * 2)
-  const stageHeight = Math.max(containerSize.height, roomHeightPx + CANVAS_PADDING * 2 + 160)
+  const stageHeight = Math.max(containerSize.height, roomHeightPx + CANVAS_PADDING * 2)
 
   // Register capture fn in module-level registry every render so refs stay fresh.
   // Bypasses the forwardRef + Next.js dynamic() ref-forwarding issue entirely.
@@ -99,7 +94,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
 
       // Crop to exact content bounds regardless of current zoom/pan
       const cW = roomWidthPx  + CANVAS_PADDING * 2
-      const cH = roomHeightPx + CANVAS_PADDING * 2 + TITLE_BLOCK_GAP + TITLE_BLOCK_H
+      const cH = roomHeightPx + CANVAS_PADDING * 2
 
       // Save current viewport transform
       const prevScale = stage.scaleX()
@@ -199,12 +194,9 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
     )
   }, [zoom, applyZoom])
 
-  // Title block positioned bottom-right of room
-  const titleX    = CANVAS_PADDING + roomWidthPx - TITLE_BLOCK_W
-  const titleY    = CANVAS_PADDING + roomHeightPx + TITLE_BLOCK_GAP
-  // Drawing frame — outer border that spans room + title block
+  // Drawing frame — outer border around the room
   const frameW    = roomWidthPx  + CANVAS_PADDING * 2
-  const frameH    = roomHeightPx + CANVAS_PADDING * 2 + TITLE_BLOCK_GAP + TITLE_BLOCK_H
+  const frameH    = roomHeightPx + CANVAS_PADDING * 2
 
   return (
     <div ref={containerRef} className="bg-gray-100 rounded-lg border border-gray-200 w-full h-full overflow-hidden">
@@ -217,9 +209,9 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
         draggable={activeTool === 'pan'}
       >
         <Layer>
-          {/* Outer drawing frame border — encompasses room + title block */}
-          <Rect x={1} y={1} width={frameW - 2} height={frameH - 2}
-            fill="white" stroke="#334155" strokeWidth={1.5} listening={false} />
+          {/* White background so PNG export has a clean base */}
+          <Rect x={0} y={0} width={frameW} height={frameH}
+            fill="white" listening={false} />
 
           <RoomOutline
             x={CANVAS_PADDING} y={CANVAS_PADDING}
@@ -227,25 +219,38 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
             room={room}
           />
 
-          {lockerBlocks.map((block) => (
-            <LockerBlockObjectComponent
-              key={block.id}
-              block={block}
-              scale={room.scale}
-              isSelected={block.id === selectedId}
-              isInMultiSelect={selectedIds.includes(block.id)}
-              labelStyle={labelStyle}
-              showDepth={showDepth}
-              getStageTransform={getStageTransform}
-              onSelect={(add) =>
-                add ? onToggleSelectItem(block.id, 'block') : onSelectItem(block.id, 'block')
-              }
-              onChange={onUpdateLockerBlock}
-              roomX={CANVAS_PADDING} roomY={CANVAS_PADDING}
-              roomWidthPx={roomWidthPx} roomHeightPx={roomHeightPx}
-              gridSizeMm={room.gridSizeMm}
-            />
-          ))}
+          {lockerBlocks.map((block) => {
+            const pfx = block.id + ':'
+            const blockCellKey = selectedCellKey?.startsWith(pfx)
+              ? selectedCellKey.slice(pfx.length)
+              : undefined
+            const blockLocksetIdx = selectedLocksetKey?.startsWith(pfx)
+              ? parseInt(selectedLocksetKey.slice(pfx.length), 10)
+              : undefined
+            return (
+              <LockerBlockObjectComponent
+                key={block.id}
+                block={block}
+                scale={room.scale}
+                isSelected={block.id === selectedId}
+                isInMultiSelect={selectedIds.includes(block.id)}
+                labelStyle={labelStyle}
+                showDepth={showDepth}
+                getStageTransform={getStageTransform}
+                onSelect={(add) =>
+                  add ? onToggleSelectItem(block.id, 'block') : onSelectItem(block.id, 'block')
+                }
+                onSelectCell={onSelectCell}
+                onSelectLockset={onSelectLockset}
+                selectedCellKey={blockCellKey}
+                selectedLocksetIdx={blockLocksetIdx}
+                onChange={onUpdateLockerBlock}
+                roomX={CANVAS_PADDING} roomY={CANVAS_PADDING}
+                roomWidthPx={roomWidthPx} roomHeightPx={roomHeightPx}
+                gridSizeMm={room.gridSizeMm}
+              />
+            )
+          })}
 
           {lockers.map((locker) => (
             <LockerObjectComponent
@@ -267,13 +272,6 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
             />
           ))}
 
-          {/* Workshop title block */}
-          <TitleBlock
-            x={titleX}
-            y={titleY}
-            officeInfo={officeInfo}
-            projectName={projectName}
-          />
         </Layer>
 
         {/* Dimension layer — separate so it can be hidden during image export */}

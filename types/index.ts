@@ -30,9 +30,13 @@ export interface LockerObject {
 // Adjacent doors in a column are separated by doorGapMm.
 
 export interface LockerCell {
-  heightMm: number    // compartment height (door + surrounding gap)
-  label?: string      // e.g. "L01" — auto-assigned if omitted
-  color?: string      // override block color
+  heightMm: number       // compartment height (door + surrounding gap)
+  label?: string         // e.g. "L01" — auto-assigned if omitted
+  color?: string         // override block door color
+  showLabel?: boolean    // false hides the label text; default true
+  labelColor?: string    // per-cell label color override
+  showDimension?: boolean // false hides the WxH dimension text; default true
+  cornerRadius?: number  // door corner radius in px; overrides block default
 }
 
 export interface LockerColumn {
@@ -72,6 +76,9 @@ export interface LockerBlock {
   depthColor?: string    // depth face base colour (defaults to frameColor if unset)
   borderWidth?: number   // outer border stroke width in px (0 = none)
   borderColor?: string   // outer border stroke colour
+  borderRadius?: number  // outer block border corner radius in px
+  cellCornerRadius?: number // default door corner radius for all cells in this block
+  locksets?: Array<{ color?: string }> // per-tray color overrides; index matches lockset channel order
   config: LockerBlockConfig
 }
 

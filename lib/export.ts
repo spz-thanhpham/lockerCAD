@@ -3,12 +3,16 @@
 
 import type { CanvasData, ExportOptions, LockerObject } from '@/types'
 
+// Canvas constants — must stay in sync with CanvasBoard.tsx
+const _CANVAS_PADDING   = 60   // px  (padding on each side of the room)
+
 // ─── PDF Export ─────────────────────────────────────────────────
 
 export async function exportToPDF(
   stageDataUrl: string,
   canvasData: CanvasData,
-  options: ExportOptions
+  options: ExportOptions,
+  filename?: string,
 ): Promise<void> {
   // jsPDF ships both a named and a default export depending on bundler
   const mod = await import('jspdf')
@@ -24,64 +28,109 @@ export async function exportToPDF(
   const pageW: number = doc.internal.pageSize.getWidth()
   const pageH: number = doc.internal.pageSize.getHeight()
 
-  const margin  = 10
-  const titleH  = 35
-  const imgW    = pageW - margin * 2
-  const imgH    = pageH - margin * 2 - titleH - 4
+  const margin   = 10
+  // Title block layout: company header row + 2 data rows
+  const tbRowH   = 13   // mm per data row
+  const tbHeadH  = 9    // mm company name header
+  const titleH   = tbHeadH + tbRowH * 2   // 35mm total
+  const availW   = pageW - margin * 2
+  const availH   = pageH - margin * 2 - titleH - 4
 
-  // ── Canvas snapshot ───────────────────────────────────────────
-  // jsPDF recognises a data-URL by checking src.indexOf("data:image/") === 0
-  // so we MUST pass the full data-URL — never strip the prefix.
-  doc.addImage(stageDataUrl, 'PNG', margin, margin, imgW, imgH)
+  // ── Compute the true aspect ratio of the captured image ───────
+  // captureCanvas crops to: room + 2×padding on all sides (no TitleBlock on canvas)
+  const { room, officeInfo: oi } = canvasData
+  const capW      = room.widthMm * room.scale + _CANVAS_PADDING * 2
+  const capH      = room.depthMm * room.scale + _CANVAS_PADDING * 2
+  const imgAspect = capW / capH
 
-  // ── Title block ───────────────────────────────────────────────
+  // Fit image into available area while preserving aspect ratio
+  let imgW = availW
+  let imgH = imgW / imgAspect
+  if (imgH > availH) { imgH = availH; imgW = imgH * imgAspect }
+  const imgX = margin + (availW - imgW) / 2
+  const imgY = margin
+
+  // ── Canvas snapshot — full data-URL required by jsPDF ────────
+  doc.addImage(stageDataUrl, 'PNG', imgX, imgY, imgW, imgH)
+
+  // ── Title block — anchored to the page bottom ─────────────────
   const tb   = options.titleBlock
-  const tbY  = margin + imgH + 4
+  const tbY  = pageH - margin - titleH
+  const r1Y  = tbY  + tbHeadH           // top of first data row
+  const r2Y  = r1Y  + tbRowH            // top of second data row
+  const colW = availW / 6
+  const pad  = 2                        // inner horizontal padding (mm)
 
+  // Outer fill + border
+  doc.setFillColor(248, 250, 252)       // slate-50
   doc.setDrawColor(51, 65, 85)
-  doc.setFillColor(241, 245, 249)       // slate-100
   doc.setLineWidth(0.3)
-  doc.rect(margin, tbY, imgW, titleH, 'FD')
+  doc.rect(margin, tbY, availW, titleH, 'FD')
 
-  // 6 equal columns
-  const colW = imgW / 6
-  const fields: [string, string][] = [
-    ['Project',     tb.projectName],
-    ['Client',      tb.clientName],
-    ['Drawing No.', tb.drawingNo],
-    ['Scale',       tb.scale],
-    ['Date',        tb.date],
-    ['Drawn by / Rev', `${tb.drawnBy}  ${tb.revision}`],
+  // Company name header
+  doc.setFillColor(30, 41, 59)          // slate-800
+  doc.rect(margin, tbY, availW, tbHeadH, 'F')
+  doc.setFontSize(9)
+  doc.setTextColor(226, 232, 240)       // slate-200
+  const company = String(oi?.companyName ?? tb.projectName ?? '')
+  doc.text(company, margin + availW / 2, tbY + 6, { align: 'center' })
+
+  // Horizontal dividers
+  doc.setDrawColor(51, 65, 85)
+  doc.line(margin, r1Y, margin + availW, r1Y)
+  doc.line(margin, r2Y, margin + availW, r2Y)
+
+  // Vertical column separators (skip first col)
+  for (let i = 1; i < 6; i++) {
+    const cx = margin + colW * i
+    doc.line(cx, r1Y, cx, tbY + titleH)
+  }
+
+  // Row 1 — drawing metadata (6 cols)
+  const row1: [string, string][] = [
+    ['Project',      tb.projectName],
+    ['Client',       tb.clientName],
+    ['Drawing No.',  tb.drawingNo],
+    ['Scale',        tb.scale],
+    ['Date',         tb.date],
+    ['Drawn by',     `${tb.drawnBy}  Rev: ${tb.revision}`],
+  ]
+  // Row 2 — office contact (5 cols + empty)
+  const row2: [string, string][] = [
+    ['Made by',  String(oi?.madeBy   ?? '')],
+    ['Address',  String(oi?.address  ?? '')],
+    ['Website',  String(oi?.website  ?? '')],
+    ['Email',    String(oi?.email    ?? '')],
+    ['Hotline',  String(oi?.hotline  ?? '')],
+    ['',         ''],
   ]
 
-  fields.forEach(([lbl, val], i) => {
-    const cx = margin + colW * i
-    // vertical separator
-    if (i > 0) {
-      doc.setDrawColor(51, 65, 85)
-      doc.line(cx, tbY, cx, tbY + titleH)
-    }
-    // label
-    doc.setFontSize(6.5)
-    doc.setTextColor(100, 116, 139)     // slate-500
-    doc.text(lbl, cx + 2, tbY + 6)
-    // value
-    doc.setFontSize(9)
-    doc.setTextColor(15, 23, 42)        // slate-900
-    const safeVal = String(val ?? '')
-    doc.text(safeVal, cx + 2, tbY + 16, { maxWidth: colW - 4 })
-  })
+  const drawRow = (fields: [string, string][], rowY: number) => {
+    fields.forEach(([lbl, val], i) => {
+      const cx = margin + colW * i
+      doc.setFontSize(6)
+      doc.setTextColor(100, 116, 139)   // label slate-500
+      doc.text(lbl, cx + pad, rowY + 4)
+      doc.setFontSize(8)
+      doc.setTextColor(15, 23, 42)      // value slate-900
+      doc.text(String(val ?? ''), cx + pad, rowY + 10, { maxWidth: colW - pad * 2 })
+    })
+  }
 
-  // bottom border
+  drawRow(row1, r1Y)
+  drawRow(row2, r2Y)
+
+  // Outer border on top of everything
   doc.setDrawColor(51, 65, 85)
-  doc.rect(margin, tbY, imgW, titleH, 'S')
+  doc.setLineWidth(0.4)
+  doc.rect(margin, tbY, availW, titleH, 'S')
 
   // Use blob URL download — more reliable than doc.save() across all browsers
   const blob = doc.output('blob') as Blob
   const blobUrl = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = blobUrl
-  a.download = `${(tb.projectName || 'layout').replace(/\s+/g, '-')}-workshop.pdf`
+  a.download = filename ?? `${(tb.projectName || 'layout').replace(/\s+/g, '-')}-workshop.pdf`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
