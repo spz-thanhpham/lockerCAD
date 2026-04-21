@@ -11,10 +11,11 @@ datasource db {
 
 model User {
   id        String    @id @default(cuid())
-  email     String    @unique
-  name      String?
-  image     String?
-  role      Role      @default(DESIGNER)
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  role          Role      @default(DESIGNER)
   projects  Project[]
   accounts  Account[]
   sessions  Session[]
