@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { signOut } from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
 
 interface Company {
   id: string
@@ -187,6 +187,8 @@ function LayoutCard({ layout, onDelete, onRename }: {
 // ── Main dashboard ──────────────────────────────────────────────────
 export default function LayoutsPage() {
   const router = useRouter()
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as any)?.role === 'ADMIN'
   const [companies, setCompanies]         = useState<Company[]>([])
   const [selectedId, setSelectedId]       = useState<string | null>(null)
   const [layouts, setLayouts]             = useState<Layout[]>([])
@@ -300,6 +302,12 @@ export default function LayoutsPage() {
             className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
           >
             + New Layout
+          </Link>
+        )}
+        {isAdmin && (
+          <Link href="/admin/users"
+            className="px-3 py-1.5 border border-gray-200 text-gray-500 text-xs rounded hover:bg-gray-50 hover:text-gray-700">
+            Admin
           </Link>
         )}
         <button
