@@ -26,6 +26,9 @@ interface Props {
   selectedCellKey?: string      // "colIdx:cellIdx" for THIS block, or undefined
   selectedLocksetIdx?: number   // index of selected lockset tray in THIS block
   onChange: (updated: LockerBlock) => void
+  onMultiDragMove?: (dx: number, dy: number) => void
+  onMultiDragEnd?: (dx: number, dy: number) => void
+  shiftHeld?: boolean
   roomX: number
   roomY: number
   roomWidthPx: number
@@ -50,14 +53,18 @@ function doorInsets(
   return { left: 0, right: ci === numCols - 1 ? dlGap : 0 }
 }
 
+const SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330]
+
 export default function LockerBlockObjectComponent({
   block, scale, isSelected, isInMultiSelect, labelStyle, showDepth, getStageTransform,
   onSelect, onSelectCell, onSelectLockset, selectedCellKey, selectedLocksetIdx, onChange,
-  roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
+  onMultiDragMove, onMultiDragEnd,
+  shiftHeld, roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
 }: Props) {
   const ls = labelStyle ?? DEFAULT_LABEL_STYLE
-  const groupRef = useRef<Konva.Group>(null)
-  const trRef    = useRef<Konva.Transformer>(null)
+  const groupRef    = useRef<Konva.Group>(null)
+  const trRef       = useRef<Konva.Transformer>(null)
+  const dragOrigin  = useRef<{ x: number; y: number } | null>(null)
   const cfg      = block.config
   const pos      = cfg.locksetPosition
   const numCols  = cfg.columns.length
@@ -65,8 +72,14 @@ export default function LockerBlockObjectComponent({
   const frameColor   = block.frameColor   ?? DEFAULT_FRAME_COLOR
   const locksetColor = block.locksetColor ?? DEFAULT_LOCKSET_COLOR
 
-  const wPx = mmToPx(blockWidthMm(cfg), scale)
-  const hPx = mmToPx(blockHeightMm(cfg), scale)
+  const wPx      = mmToPx(blockWidthMm(cfg), scale)
+  const hPx      = mmToPx(blockHeightMm(cfg), scale)
+  const legsPx   = mmToPx(block.legsHeightMm ?? 0, scale)
+  const legsWPx  = mmToPx(block.legsWidthMm  ?? 50, scale)
+  const legsColor = block.legsColor ?? frameColor
+  const totalHPx  = hPx + legsPx
+  // Legs use their own depth (or fall back to cabinet depth)
+  const legsDepthPx = mmToPx(block.legsDepthMm ?? cfg.depthMm, scale)
 
   useEffect(() => {
     if (isSelected && trRef.current && groupRef.current) {
@@ -75,7 +88,7 @@ export default function LockerBlockObjectComponent({
     }
   }, [isSelected])
 
-  const boundFunc = makeRoomBoundFunc(wPx, hPx, roomWidthPx, roomHeightPx, roomX, roomY, gridSizeMm, scale, getStageTransform)
+  const boundFunc = makeRoomBoundFunc(wPx, totalHPx, roomWidthPx, roomHeightPx, roomX, roomY, gridSizeMm, scale, getStageTransform)
 
   const topH    = mmToPx(cfg.topHeightMm, scale)
   const baseH   = mmToPx(cfg.baseHeightMm, scale)
@@ -120,7 +133,19 @@ export default function LockerBlockObjectComponent({
         onClick={(e) => onSelect(e.evt.ctrlKey || e.evt.metaKey)}
         onTap={() => onSelect(false)}
         dragBoundFunc={boundFunc}
-        onDragEnd={(e) => onChange({ ...block, x: e.target.x(), y: e.target.y() })}
+        onDragStart={() => { dragOrigin.current = { x: block.x, y: block.y } }}
+        onDragMove={(e) => {
+          if (onMultiDragMove && dragOrigin.current)
+            onMultiDragMove(e.target.x() - dragOrigin.current.x, e.target.y() - dragOrigin.current.y)
+        }}
+        onDragEnd={(e) => {
+          if (onMultiDragEnd && dragOrigin.current) {
+            onMultiDragEnd(e.target.x() - dragOrigin.current.x, e.target.y() - dragOrigin.current.y)
+          } else {
+            onChange({ ...block, x: e.target.x(), y: e.target.y() })
+          }
+          dragOrigin.current = null
+        }}
         onTransformEnd={() => {
           const node = groupRef.current!
           onChange({ ...block, x: node.x(), y: node.y(), rotation: node.rotation() })
@@ -129,27 +154,56 @@ export default function LockerBlockObjectComponent({
       >
         {/* Depth projection — drawn first so it sits behind the front face */}
         {showDepth && (() => {
-          const depthPx  = mmToPx(cfg.depthMm, scale)
+          const depthPx    = mmToPx(cfg.depthMm, scale)
           const { dx, dy } = projOffset(depthPx)
-          const base     = block.depthColor ?? frameColor
-          const topFill  = darkenHex(base, 0.15)
-          const sideFill = darkenHex(base, 0.30)
+          const base       = block.depthColor ?? frameColor
+          const topFill    = darkenHex(base, 0.15)
+          const sideFill   = darkenHex(base, 0.30)
 
-          // CAD depth dimension along the projected right edge of the top face:
-          // edge runs from [wPx, 0] → [wPx+dx, dy]
+          // Back legs — rendered before cabinet faces so they appear behind
+          const backLegNodes = legsPx > 0 ? (() => {
+            const defaultInset = Math.min(leftM, rightM) * 0.5
+            const insetPx   = block.legsInsetMm != null ? mmToPx(block.legsInsetMm, scale) : defaultInset
+            const legRadius = block.legsCornerRadius ?? 2
+            const { dx: ldx, dy: ldy } = projOffset(legsDepthPx)
+            const legTopF   = darkenHex(legsColor, 0.15)
+            const legSideF  = darkenHex(legsColor, 0.30)
+            const legFrontF = darkenHex(legsColor, 0.10)
+            const positions = [insetPx, wPx - insetPx - legsWPx]
+            return positions.map((lx, i) => {
+              const bx = lx + ldx, by = hPx + ldy
+              return (
+                <Group key={`back-leg-${i}`}>
+                  <Line closed
+                    points={[bx, by, bx + legsWPx, by, bx + legsWPx + ldx, by + ldy, bx + ldx, by + ldy]}
+                    fill={legTopF} stroke={DOOR_STROKE} strokeWidth={0.5} />
+                  <Line closed
+                    points={[bx + legsWPx, by, bx + legsWPx, by + legsPx,
+                             bx + legsWPx + ldx, by + legsPx + ldy, bx + legsWPx + ldx, by + ldy]}
+                    fill={legSideF} stroke={DOOR_STROKE} strokeWidth={0.5} />
+                  <Rect x={bx} y={by} width={legsWPx} height={legsPx}
+                    fill={legFrontF} stroke={DOOR_STROKE} strokeWidth={0.5}
+                    cornerRadius={legRadius} />
+                </Group>
+              )
+            })
+          })() : null
+
+          // CAD depth dimension
           const len = Math.sqrt(dx * dx + dy * dy)
-          const dimOffset = 10                       // px outward from edge
-          // Outward perpendicular (clockwise rotation of edge vector = up-left)
+          const dimOffset = 10
           const ox = len > 0 ? (dy / len) * dimOffset  : 0
           const oy = len > 0 ? (-dx / len) * dimOffset : 0
-          const ax = wPx + ox,        ay = oy            // dim start
-          const bx = wPx + dx + ox,   by = dy + oy       // dim end
+          const ax = wPx + ox,        ay = oy
+          const bx = wPx + dx + ox,   by = dy + oy
           const midX = (ax + bx) / 2, midY = (ay + by) / 2
           const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI
           const label = `${cfg.depthMm}mm`
 
           return (
             <>
+              {backLegNodes}
+
               {/* Top face */}
               <Line closed
                 points={[0, 0, wPx, 0, wPx + dx, dy, dx, dy]}
@@ -159,31 +213,63 @@ export default function LockerBlockObjectComponent({
                 points={[wPx, 0, wPx, hPx, wPx + dx, hPx + dy, wPx + dx, dy]}
                 fill={sideFill} stroke={DOOR_STROKE} strokeWidth={0.5} />
 
-              {/* Depth dimension annotation — hidden on export when dims excluded */}
-              <Group name="depth-dim">
-                <Line points={[wPx, 0, ax, ay]}         stroke="#3b82f6" strokeWidth={0.5} dash={[2, 2]} />
-                <Line points={[wPx + dx, dy, bx, by]}   stroke="#3b82f6" strokeWidth={0.5} dash={[2, 2]} />
-                <Arrow
-                  points={[ax, ay, bx, by]}
-                  pointerLength={4} pointerWidth={3}
-                  fill="#3b82f6" stroke="#3b82f6" strokeWidth={0.8}
-                  pointerAtBeginning pointerAtEnding
-                />
-                <Text
-                  x={midX} y={midY}
-                  offsetX={label.length * 2.8}
-                  offsetY={9}
-                  text={label}
-                  fontSize={9} fontFamily="monospace" fill="#3b82f6"
-                  rotation={angleDeg}
-                />
-              </Group>
+              {/* Depth dimension annotation */}
+              {block.showDepthLabel !== false && (
+                <Group name="depth-dim">
+                  <Line points={[wPx, 0, ax, ay]}         stroke="#3b82f6" strokeWidth={0.5} dash={[2, 2]} />
+                  <Line points={[wPx + dx, dy, bx, by]}   stroke="#3b82f6" strokeWidth={0.5} dash={[2, 2]} />
+                  <Arrow
+                    points={[ax, ay, bx, by]}
+                    pointerLength={4} pointerWidth={3}
+                    fill="#3b82f6" stroke="#3b82f6" strokeWidth={0.8}
+                    pointerAtBeginning pointerAtEnding
+                  />
+                  <Text
+                    x={midX} y={midY}
+                    offsetX={label.length * 2.8}
+                    offsetY={9}
+                    text={label}
+                    fontSize={9} fontFamily="monospace" fill="#3b82f6"
+                    rotation={angleDeg}
+                  />
+                </Group>
+              )}
             </>
           )
         })()}
 
-        {/* Selection / multi-select outline */}
-        <Rect width={wPx} height={hPx} fill="transparent"
+        {/* Front legs — rendered before cabinet panels so the base panel sits on top */}
+        {legsPx > 0 && (() => {
+          const defaultInset = Math.min(leftM, rightM) * 0.5
+          const insetPx   = block.legsInsetMm != null ? mmToPx(block.legsInsetMm, scale) : defaultInset
+          const legRadius = block.legsCornerRadius ?? 2
+          const { dx: ldx, dy: ldy } = showDepth ? projOffset(legsDepthPx) : { dx: 0, dy: 0 }
+          const legTopFill  = darkenHex(legsColor, 0.15)
+          const legSideFill = darkenHex(legsColor, 0.30)
+          const positions   = [insetPx, wPx - insetPx - legsWPx]
+
+          return positions.map((lx, i) => (
+            <Group key={`front-leg-${i}`}>
+              {showDepth && (
+                <>
+                  <Line closed
+                    points={[lx, hPx, lx + legsWPx, hPx, lx + legsWPx + ldx, hPx + ldy, lx + ldx, hPx + ldy]}
+                    fill={legTopFill} stroke={DOOR_STROKE} strokeWidth={0.5} />
+                  <Line closed
+                    points={[lx + legsWPx, hPx, lx + legsWPx, hPx + legsPx,
+                             lx + legsWPx + ldx, hPx + legsPx + ldy, lx + legsWPx + ldx, hPx + ldy]}
+                    fill={legSideFill} stroke={DOOR_STROKE} strokeWidth={0.5} />
+                </>
+              )}
+              <Rect x={lx} y={hPx} width={legsWPx} height={legsPx}
+                fill={legsColor} stroke={DOOR_STROKE} strokeWidth={0.5}
+                cornerRadius={legRadius} />
+            </Group>
+          ))
+        })()}
+
+        {/* Selection / multi-select outline — covers legs too */}
+        <Rect width={wPx} height={totalHPx} fill="transparent"
           stroke={outlineStroke} strokeWidth={outlineWidth} />
 
         {/* TOP panel */}
@@ -251,7 +337,7 @@ export default function LockerBlockObjectComponent({
                     <Line
                       points={[li + doorW / 2, startY + 4, li + doorW / 2, startY + doorH - 4]}
                       stroke={DOOR_STROKE} strokeWidth={0.5} opacity={0.35} listening={false} />
-                    {cell.label && cell.showLabel !== false && (() => {
+                    {cell.label && block.showCellLabels !== false && cell.showLabel !== false && (() => {
                       const lp = cellLabelProps(ls.position, li, startY, doorW, doorH)
                       const fs = ls.fontSize > 0 ? ls.fontSize : Math.max(8, doorW * 0.18)
                       const fc = cell.labelColor ?? ls.color
@@ -260,7 +346,7 @@ export default function LockerBlockObjectComponent({
                           fontSize={fs} fontFamily="monospace" fill={fc} listening={false} />
                       )
                     })()}
-                    {cell.showDimension !== false && (
+                    {block.showCellDimensions !== false && cell.showDimension !== false && (
                       <Text x={li} y={startY + doorH - 12}
                         width={doorW} align="center"
                         text={`${col.widthMm}×${cell.heightMm}`}
@@ -276,6 +362,7 @@ export default function LockerBlockObjectComponent({
           )
         })}
 
+
         {/* Permanent border — always visible, on top of content */}
         {(block.borderWidth ?? 0) > 0 && (
           <Rect width={wPx} height={hPx} fill="transparent"
@@ -285,7 +372,7 @@ export default function LockerBlockObjectComponent({
         )}
 
         {/* Block label — rendered ABOVE the frame (shifted further up when depth is shown) */}
-        {(() => {
+        {block.showBlockLabel !== false && (() => {
           const fs = ls.fontSize > 0 ? ls.fontSize : Math.max(10, topH * 0.7)
           const depthDy = showDepth ? projOffset(mmToPx(cfg.depthMm, scale)).dy : 0
           return (
@@ -299,6 +386,8 @@ export default function LockerBlockObjectComponent({
 
       {isSelected && (
         <Transformer ref={trRef} rotateEnabled={true} enabledAnchors={[]}
+          rotationSnaps={shiftHeld ? SNAP_ANGLES : []}
+          rotationSnapTolerance={shiftHeld ? 10 : 0}
           borderStroke="#3b82f6" borderStrokeWidth={1} />
       )}
     </>

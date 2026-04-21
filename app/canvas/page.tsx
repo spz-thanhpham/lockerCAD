@@ -6,10 +6,11 @@ import { useRef, useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useCanvasStore, type AlignmentType } from '@/lib/store'
 import { useTemplateStore } from '@/lib/template-store'
+import { useLockerTemplateStore } from '@/lib/locker-template-store'
 import PropertiesPanel from '@/components/editor/PropertiesPanel'
 import Toolbar from '@/components/editor/Toolbar'
 import LockerCreateForm from '@/components/editor/LockerCreateForm'
-import { DEFAULT_LOCKER_TEMPLATES, type LockerBlock, type LockerCell, type OfficeInfo, type LabelPosition } from '@/types'
+import { type LockerBlock, type LockerCell, type OfficeInfo, type LabelPosition } from '@/types'
 import type { CanvasBoardHandle, ExportImageOpts } from '@/components/editor/CanvasBoard'
 import { captureCanvas } from '@/lib/canvas-capture'
 
@@ -20,6 +21,36 @@ export default function CanvasPage() {
     <Suspense>
       <CanvasEditor />
     </Suspense>
+  )
+}
+
+// ── Number input that lets the user type freely ───────────────────
+// Keeps a local draft string; only commits to the store on blur/Enter.
+function DraftNumberInput({
+  value, min, max, step, onCommit, className,
+}: {
+  value: number; min: number; max: number; step?: number
+  onCommit: (v: number) => void; className?: string
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const display = draft ?? String(value)
+  return (
+    <input
+      type="number" min={min} max={max} step={step}
+      value={display}
+      className={className}
+      onFocus={(e) => { setDraft(String(value)); e.target.select() }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const v = parseInt(draft ?? '', 10)
+        if (!isNaN(v) && v >= min && v <= max) onCommit(v)
+        setDraft(null)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+        if (e.key === 'Escape') setDraft(null)
+      }}
+    />
   )
 }
 
@@ -78,19 +109,30 @@ const OFFICE_FIELDS: { key: keyof OfficeInfo; label: string; placeholder: string
 ]
 
 function OfficeInfoEditor({ info, onChange }: { info: OfficeInfo; onChange: (k: keyof OfficeInfo, v: string) => void }) {
+  const [open, setOpen] = useState(false)
   return (
-    <div className="p-3 border-b space-y-2">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Office info</p>
-      {OFFICE_FIELDS.map(({ key, label, placeholder }) => (
-        <div key={key}>
-          <label className="block text-[10px] text-gray-400 mb-0.5">{label}</label>
-          <input
-            value={info[key]} placeholder={placeholder}
-            onChange={(e) => onChange(key, e.target.value)}
-            className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-          />
+    <div className="border-b">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-50"
+      >
+        Office info
+        <span className="text-gray-400 text-[10px]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2">
+          {OFFICE_FIELDS.map(({ key, label, placeholder }) => (
+            <div key={key}>
+              <label className="block text-[10px] text-gray-400 mb-0.5">{label}</label>
+              <input
+                value={info[key]} placeholder={placeholder}
+                onChange={(e) => onChange(key, e.target.value)}
+                className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -130,6 +172,8 @@ function CanvasEditor() {
   const deleteLockerBlock = useCanvasStore((s) => s.deleteLockerBlock)
   const selectItem        = useCanvasStore((s) => s.selectItem)
   const toggleSelectItem  = useCanvasStore((s) => s.toggleSelectItem)
+  const selectBatch       = useCanvasStore((s) => s.selectBatch)
+  const bulkMove          = useCanvasStore((s) => s.bulkMove)
   const selectAll         = useCanvasStore((s) => s.selectAll)
   const alignItems        = useCanvasStore((s) => s.alignItems)
   const setShowDimensions = useCanvasStore((s) => s.setShowDimensions)
@@ -248,8 +292,20 @@ function CanvasEditor() {
   const [savingTpl, setSavingTpl]   = useState(false)
   const [tplName, setTplName]       = useState('')
 
-  // Rehydrate template store from localStorage (skip SSR)
-  useEffect(() => { useTemplateStore.persist.rehydrate() }, [])
+  // Locker quick-add templates (localStorage-persisted)
+  const lockerTpls          = useLockerTemplateStore((s) => s.templates)
+  const addLockerTpl        = useLockerTemplateStore((s) => s.addTemplate)
+  const updateLockerTpl     = useLockerTemplateStore((s) => s.updateTemplate)
+  const deleteLockerTpl     = useLockerTemplateStore((s) => s.deleteTemplate)
+  const [editingLTplId, setEditingLTplId] = useState<string | null>(null)
+  const [addingLTpl, setAddingLTpl]       = useState(false)
+  const [newLTpl, setNewLTpl]             = useState({ widthMm: 300, heightMm: 1800, depthMm: 450, color: '#94a3b8' })
+
+  // Rehydrate template stores from localStorage (skip SSR)
+  useEffect(() => {
+    useTemplateStore.persist.rehydrate()
+    useLockerTemplateStore.getState().rehydrate()
+  }, [])
 
   const handleSaveTemplate = () => {
     if (!selectedBlock) return
@@ -336,9 +392,6 @@ function CanvasEditor() {
       <Toolbar
         activeTool={activeTool} onToolChange={setActiveTool}
         zoom={zoom}
-        onZoomIn={() => canvasBoardRef.current?.zoomIn()}
-        onZoomOut={() => canvasBoardRef.current?.zoomOut()}
-        onZoomReset={() => { canvasBoardRef.current?.zoomReset(); setZoom(1) }}
         onSave={handleSave} saving={saving} isDirty={isDirty}
         canvasData={getCanvasData()} getStageDataUrl={getStageDataUrl}
         projectName={projectName} onRenameProject={setProjectName}
@@ -353,18 +406,82 @@ function CanvasEditor() {
             <LockerCreateForm onAdd={addLockerBlock} />
           </div>
 
-          {/* Quick add */}
+          {/* Quick add — lockers */}
           <div className="p-3 border-b">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick add — lockers</h2>
             <div className="space-y-1.5">
-              {DEFAULT_LOCKER_TEMPLATES.map((t) => (
-                <button key={t.templateId} onClick={() => addLocker(t)}
-                  className="w-full text-left px-2 py-1.5 rounded border text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors">
-                  <div className="font-medium text-gray-700">{t.widthMm}W × {t.heightMm}H</div>
-                  <div className="text-gray-400">Depth {t.depthMm}mm</div>
-                </button>
+              {lockerTpls.map((t) => (
+                <div key={t.id} className="group">
+                  {editingLTplId === t.id ? (
+                    <div className="border rounded p-1.5 space-y-1 bg-blue-50">
+                      {([['widthMm','W'],['heightMm','H'],['depthMm','D']] as [keyof typeof t, string][]).map(([k, lbl]) => (
+                        <div key={k} className="flex items-center gap-1">
+                          <span className="text-[10px] text-gray-500 w-5 shrink-0">{lbl}</span>
+                          <input type="number" min={50} step={10}
+                            value={t[k] as number}
+                            onChange={(e) => updateLockerTpl(t.id, { [k]: Math.max(50, Number(e.target.value)) })}
+                            className="min-w-0 flex-1 border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                          <span className="text-[10px] text-gray-400 shrink-0">mm</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-gray-500 w-14 shrink-0">Color</span>
+                        <input type="color" value={t.color}
+                          onChange={(e) => updateLockerTpl(t.id, { color: e.target.value })}
+                          className="w-7 h-5 rounded cursor-pointer border" />
+                      </div>
+                      <button onClick={() => setEditingLTplId(null)}
+                        className="w-full mt-0.5 py-0.5 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700">Done</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => addLocker(t)}
+                        className="flex-1 text-left px-2 py-1.5 rounded border text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                        <div className="font-medium text-gray-700">{t.widthMm}W × {t.heightMm}H</div>
+                        <div className="text-gray-400">Depth {t.depthMm}mm</div>
+                      </button>
+                      <button onClick={() => setEditingLTplId(t.id)} title="Edit"
+                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-500 transition-opacity text-sm">✎</button>
+                      <button onClick={() => deleteLockerTpl(t.id)} title="Remove"
+                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity">×</button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
+
+            {/* Add new locker template */}
+            {addingLTpl ? (
+              <div className="border rounded p-1.5 space-y-1 mt-2 bg-gray-50">
+                {([['widthMm','W'],['heightMm','H'],['depthMm','D']] as [keyof typeof newLTpl, string][]).map(([k, lbl]) => (
+                  <div key={k} className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-500 w-5 shrink-0">{lbl}</span>
+                    <input type="number" min={50} step={10}
+                      value={newLTpl[k] as number}
+                      onChange={(e) => setNewLTpl((p) => ({ ...p, [k]: Math.max(50, Number(e.target.value)) }))}
+                      className="min-w-0 flex-1 border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    <span className="text-[10px] text-gray-400 shrink-0">mm</span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-gray-500 w-14 shrink-0">Color</span>
+                  <input type="color" value={newLTpl.color}
+                    onChange={(e) => setNewLTpl((p) => ({ ...p, color: e.target.value }))}
+                    className="w-7 h-5 rounded cursor-pointer border" />
+                </div>
+                <div className="flex gap-1 mt-0.5">
+                  <button onClick={() => { addLockerTpl(newLTpl); setAddingLTpl(false) }}
+                    className="flex-1 py-0.5 bg-green-600 text-white text-[10px] rounded hover:bg-green-700">Add</button>
+                  <button onClick={() => setAddingLTpl(false)}
+                    className="flex-1 py-0.5 border rounded text-[10px] text-gray-500 hover:bg-gray-100">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setAddingLTpl(true)}
+                className="mt-2 w-full py-1 border border-dashed border-gray-300 rounded text-[10px] text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                + Add locker type
+              </button>
+            )}
           </div>
 
           {/* Block templates */}
@@ -410,13 +527,10 @@ function CanvasEditor() {
             ] as [keyof typeof room, string, number, number, number][]).map(([key, label, min, max, step]) => (
               <div key={key} className="flex items-center justify-between gap-1">
                 <span className="text-xs text-gray-500 w-10 shrink-0">{label}</span>
-                <input
-                  type="number" min={min} max={max} step={step}
+                <DraftNumberInput
                   value={room[key] as number}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10)
-                    if (!isNaN(v) && v >= min) setRoom({ [key]: v })
-                  }}
+                  min={min} max={max} step={step}
+                  onCommit={(v) => setRoom({ [key]: v })}
                   className="flex-1 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
                 />
                 <span className="text-[10px] text-gray-400 w-6 shrink-0">mm</span>
@@ -438,13 +552,10 @@ function CanvasEditor() {
             </div>
             <div className="flex items-center justify-between gap-1">
               <span className="text-xs text-gray-500 w-10 shrink-0">Grid</span>
-              <input
-                type="number" min={10} max={1000} step={10}
+              <DraftNumberInput
                 value={room.gridSizeMm}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10)
-                  if (!isNaN(v) && v >= 10) setRoom({ gridSizeMm: v })
-                }}
+                min={10} max={1000} step={10}
+                onCommit={(v) => setRoom({ gridSizeMm: v })}
                 className="flex-1 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
               <span className="text-[10px] text-gray-400 w-6 shrink-0">mm</span>
@@ -492,11 +603,6 @@ function CanvasEditor() {
 
           <div className="p-3 border-t mt-auto space-y-2">
             <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-              <input type="checkbox" checked={showDimensions}
-                onChange={(e) => setShowDimensions(e.target.checked)} className="rounded" />
-              Show dimensions
-            </label>
-            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
               <input type="checkbox" checked={showDepth}
                 onChange={(e) => setShowDepth(e.target.checked)} className="rounded" />
               Show 3D depth
@@ -514,12 +620,13 @@ function CanvasEditor() {
             lockers={lockers} lockerBlocks={lockerBlocks} room={room}
             selectedId={selectedId} selectedIds={selectedIds}
             labelStyle={labelStyle}
-            onSelectItem={selectItem} onToggleSelectItem={toggleSelectItem}
+            onSelectItem={selectItem} onToggleSelectItem={toggleSelectItem} onSelectBatch={selectBatch}
             onSelectCell={handleSelectCell}
             onSelectLockset={handleSelectLockset}
             selectedCellKey={selectedCell ? `${selectedCell.blockId}:${selectedCell.colIdx}:${selectedCell.cellIdx}` : undefined}
             selectedLocksetKey={selectedLockset ? `${selectedLockset.blockId}:${selectedLockset.locksetIdx}` : undefined}
             onUpdateLocker={updateLocker} onUpdateLockerBlock={updateLockerBlock}
+            onBulkMove={bulkMove}
             showDimensions={showDimensions} showDepth={showDepth} activeTool={activeTool} onZoomChange={setZoom}
           />
         </main>
@@ -706,6 +813,24 @@ function CanvasEditor() {
                 </p>
               </div>
 
+              <div className="space-y-1.5">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Display</p>
+                {([
+                  ['showBlockLabel',     'Block name'],
+                  ['showCellLabels',     'Cell labels'],
+                  ['showCellDimensions', 'Cell dimensions'],
+                  ['showDepthLabel',     'Depth annotation'],
+                ] as [keyof typeof selectedBlock, string][]).map(([key, label]) => (
+                  <label key={key} className="flex items-center justify-between cursor-pointer">
+                    <span className="text-gray-500 text-xs">{label}</span>
+                    <input type="checkbox"
+                      checked={(selectedBlock[key] as boolean | undefined) !== false}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, [key]: e.target.checked })}
+                      className="w-4 h-4 accent-blue-500 cursor-pointer" />
+                  </label>
+                ))}
+              </div>
+
               <div className="space-y-2">
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Colours</p>
                 <ColorRow label="Door"    value={selectedBlock.color}
@@ -750,6 +875,51 @@ function CanvasEditor() {
                 <ColorRow label="Colour"
                   value={selectedBlock.borderColor ?? '#1e293b'}
                   onChange={(v) => updateLockerBlock({ ...selectedBlock, borderColor: v })} />
+              </div>
+
+              <div className="space-y-2 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Legs</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Height (mm)</span>
+                  <input type="number" min={0} max={300} step={10}
+                    value={selectedBlock.legsHeightMm ?? 0}
+                    onChange={(e) => updateLockerBlock({ ...selectedBlock, legsHeightMm: Math.max(0, Number(e.target.value)) })}
+                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                {(selectedBlock.legsHeightMm ?? 0) > 0 && (<>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Width (mm)</span>
+                    <input type="number" min={20} max={200} step={5}
+                      value={selectedBlock.legsWidthMm ?? 50}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsWidthMm: Math.max(20, Number(e.target.value)) })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Depth (mm)</span>
+                    <input type="number" min={10} max={1000} step={10}
+                      value={selectedBlock.legsDepthMm ?? selectedBlock.config.depthMm}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsDepthMm: Math.max(10, Number(e.target.value)) })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Inset (mm)</span>
+                    <input type="number" min={0} max={500} step={5}
+                      value={selectedBlock.legsInsetMm ?? Math.round(Math.min(selectedBlock.config.leftMarginMm, selectedBlock.config.rightMarginMm) / 2)}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsInsetMm: Math.max(0, Number(e.target.value)) })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Radius (px)</span>
+                    <input type="number" min={0} max={40} step={1}
+                      value={selectedBlock.legsCornerRadius ?? 2}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsCornerRadius: Math.max(0, Number(e.target.value)) })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <ColorRow label="Colour"
+                    value={selectedBlock.legsColor ?? selectedBlock.frameColor ?? '#334155'}
+                    onChange={(v) => updateLockerBlock({ ...selectedBlock, legsColor: v })} />
+                </>)}
               </div>
 
               <div className="grid grid-cols-2 gap-1 text-gray-400 pt-2 border-t">

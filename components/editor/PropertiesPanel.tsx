@@ -96,6 +96,23 @@ export default function PropertiesPanel({ locker, showDepth, onChange, onDelete 
         ))}
       </div>
 
+      {/* Visibility */}
+      <div className="space-y-1.5">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Display</p>
+        {([
+          ['showLabel',     'Show name label'],
+          ['showDimension', 'Show dimension'],
+        ] as [keyof LockerObject, string][]).map(([key, label]) => (
+          <label key={key} className="flex items-center justify-between cursor-pointer">
+            <span className="text-gray-500">{label}</span>
+            <input type="checkbox"
+              checked={(locker[key] as boolean | undefined) !== false}
+              onChange={(e) => onChange({ ...locker, [key]: e.target.checked })}
+              className="w-4 h-4 accent-blue-500 cursor-pointer" />
+          </label>
+        ))}
+      </div>
+
       {/* Rotation */}
       <Field label="Rotation">
         <div className="flex gap-1 flex-wrap">

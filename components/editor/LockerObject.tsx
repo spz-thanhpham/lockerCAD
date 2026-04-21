@@ -17,6 +17,9 @@ interface Props {
   getStageTransform: () => { x: number; y: number; scaleX: number }
   onSelect: (addToSelection: boolean) => void
   onChange: (updated: LockerObject) => void
+  onMultiDragMove?: (dx: number, dy: number) => void
+  onMultiDragEnd?: (dx: number, dy: number) => void
+  shiftHeld?: boolean
   roomX: number
   roomY: number
   roomWidthPx: number
@@ -24,13 +27,17 @@ interface Props {
   gridSizeMm: number
 }
 
+const SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330]
+
 export default function LockerObjectComponent({
   locker, scale, isSelected, isInMultiSelect, labelStyle, showDepth, getStageTransform, onSelect, onChange,
-  roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
+  onMultiDragMove, onMultiDragEnd,
+  shiftHeld, roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
 }: Props) {
   const ls = labelStyle ?? DEFAULT_LABEL_STYLE
-  const shapeRef = useRef<Konva.Group>(null)
-  const trRef    = useRef<Konva.Transformer>(null)
+  const shapeRef    = useRef<Konva.Group>(null)
+  const trRef       = useRef<Konva.Transformer>(null)
+  const dragOrigin  = useRef<{ x: number; y: number } | null>(null)
 
   const wPx = mmToPx(locker.widthMm, scale)
   const hPx = mmToPx(locker.heightMm, scale)
@@ -58,7 +65,19 @@ export default function LockerObjectComponent({
         onClick={(e) => onSelect(e.evt.ctrlKey || e.evt.metaKey)}
         onTap={() => onSelect(false)}
         dragBoundFunc={boundFunc}
-        onDragEnd={(e) => onChange({ ...locker, x: e.target.x(), y: e.target.y() })}
+        onDragStart={() => { dragOrigin.current = { x: locker.x, y: locker.y } }}
+        onDragMove={(e) => {
+          if (onMultiDragMove && dragOrigin.current)
+            onMultiDragMove(e.target.x() - dragOrigin.current.x, e.target.y() - dragOrigin.current.y)
+        }}
+        onDragEnd={(e) => {
+          if (onMultiDragEnd && dragOrigin.current) {
+            onMultiDragEnd(e.target.x() - dragOrigin.current.x, e.target.y() - dragOrigin.current.y)
+          } else {
+            onChange({ ...locker, x: e.target.x(), y: e.target.y() })
+          }
+          dragOrigin.current = null
+        }}
         onTransformEnd={() => {
           const node = shapeRef.current!
           onChange({
@@ -120,21 +139,27 @@ export default function LockerObjectComponent({
         <Rect width={wPx} height={hPx} fill={locker.color}
           stroke={strokeColor} strokeWidth={strokeWidth} cornerRadius={2} />
         <Rect x={wPx / 2 - 0.5} y={4} width={1} height={hPx - 8} fill="#475569" opacity={0.3} />
-        <Text text={locker.label}
-          fontSize={ls.fontSize > 0 ? ls.fontSize : Math.max(10, wPx * 0.18)}
-          fontFamily="monospace" fill={ls.color}
-          width={wPx} align="center" y={hPx / 2 - 8} />
-        <Text text={`${locker.widthMm}×${locker.heightMm}`}
-          fontSize={ls.fontSize > 0 ? Math.max(7, ls.fontSize * 0.7) : Math.max(8, wPx * 0.12)}
-          fontFamily="monospace" fill={ls.color} opacity={0.6}
-          width={wPx} align="center" y={hPx / 2 + 6} />
+        {locker.showLabel !== false && (
+          <Text text={locker.label}
+            fontSize={ls.fontSize > 0 ? ls.fontSize : Math.max(10, wPx * 0.18)}
+            fontFamily="monospace" fill={ls.color}
+            width={wPx} align="center" y={hPx / 2 - 8} />
+        )}
+        {locker.showDimension !== false && (
+          <Text text={`${locker.widthMm}×${locker.heightMm}`}
+            fontSize={ls.fontSize > 0 ? Math.max(7, ls.fontSize * 0.7) : Math.max(8, wPx * 0.12)}
+            fontFamily="monospace" fill={ls.color} opacity={0.6}
+            width={wPx} align="center" y={hPx / 2 + 6} />
+        )}
       </Group>
 
       {isSelected && (
         <Transformer ref={trRef}
           boundBoxFunc={(oldBox, newBox) => newBox.width < mmToPx(100, scale) ? oldBox : newBox}
           enabledAnchors={['middle-left', 'middle-right', 'top-center', 'bottom-center']}
-          rotateEnabled={true} />
+          rotateEnabled={true}
+          rotationSnaps={shiftHeld ? SNAP_ANGLES : []}
+          rotationSnapTolerance={shiftHeld ? 10 : 0} />
       )}
     </>
   )

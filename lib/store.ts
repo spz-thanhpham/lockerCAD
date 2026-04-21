@@ -54,6 +54,8 @@ interface CanvasStore {
   toggleSelectItem: (id: string, type: 'locker' | 'block') => void
   selectAll: () => void
   clearSelection: () => void
+  selectBatch: (items: { id: string; type: 'locker' | 'block' }[]) => void
+  bulkMove: (dx: number, dy: number) => void
 
   // Alignment (operates on selectedIds)
   alignItems: (alignment: AlignmentType) => void
@@ -174,6 +176,26 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }),
 
   clearSelection: () => set({ selectedId: null, selectedType: null, selectedIds: [] }),
+
+  selectBatch: (items) => {
+    if (items.length === 0) { set({ selectedId: null, selectedType: null, selectedIds: [] }); return }
+    set({
+      selectedIds: items.map((i) => i.id),
+      selectedId:   items[0].id,
+      selectedType: items[0].type,
+    })
+  },
+
+  bulkMove: (dx, dy) =>
+    set((s) => ({
+      lockers: s.lockers.map((l) =>
+        s.selectedIds.includes(l.id) ? { ...l, x: l.x + dx, y: l.y + dy } : l
+      ),
+      lockerBlocks: s.lockerBlocks.map((b) =>
+        s.selectedIds.includes(b.id) ? { ...b, x: b.x + dx, y: b.y + dy } : b
+      ),
+      isDirty: true,
+    })),
 
   // ── Alignment ────────────────────────────────────────────────
   alignItems: (alignment) => {

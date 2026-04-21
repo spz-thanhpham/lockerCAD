@@ -7,6 +7,18 @@ import type { ExportImageOpts } from '@/components/editor/CanvasBoard'
 import ExportPDF from '@/components/export/ExportPDF'
 import ExportDXF from '@/components/export/ExportDXF'
 import ExportImage from '@/components/export/ExportImage'
+import { zoomIn, zoomOut, fitToRoom, setZoomLevel, setZoomLocked } from '@/lib/canvas-zoom'
+
+const ZOOM_PRESETS = [
+  { label: 'Fit', value: 'fit' },
+  { label: '25%',  value: 0.25 },
+  { label: '50%',  value: 0.50 },
+  { label: '75%',  value: 0.75 },
+  { label: '100%', value: 1.00 },
+  { label: '150%', value: 1.50 },
+  { label: '200%', value: 2.00 },
+  { label: '300%', value: 3.00 },
+] as const
 
 type Tool = 'select' | 'pan'
 
@@ -14,9 +26,6 @@ interface Props {
   activeTool: Tool
   onToolChange: (tool: Tool) => void
   zoom: number
-  onZoomIn: () => void
-  onZoomOut: () => void
-  onZoomReset: () => void
   onSave: () => void
   saving: boolean
   isDirty: boolean
@@ -30,12 +39,19 @@ interface Props {
 
 export default function Toolbar({
   activeTool, onToolChange,
-  zoom, onZoomIn, onZoomOut, onZoomReset,
+  zoom,
   onSave, saving, isDirty,
   canvasData, getStageDataUrl, projectName, onRenameProject, showDimensions,
   onSelectAll,
 }: Props) {
   const [editing, setEditing] = useState(false)
+  const [zoomLocked, setZoomLockedState] = useState(false)
+
+  const toggleZoomLock = () => {
+    const next = !zoomLocked
+    setZoomLockedState(next)
+    setZoomLocked(next)
+  }
   const [draft, setDraft] = useState(projectName)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -94,12 +110,34 @@ export default function Toolbar({
       </button>
 
       {/* Zoom */}
-      <div className="flex items-center gap-1 border rounded p-0.5 ml-1">
-        <button onClick={onZoomOut}   className="px-1.5 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded">−</button>
-        <button onClick={onZoomReset} className="px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 rounded min-w-[44px] text-center">
-          {Math.round(zoom * 100)}%
+      <div className="flex items-center border rounded p-0.5 ml-1">
+        <button onClick={zoomOut} className="px-1.5 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded">−</button>
+        <select
+          value={ZOOM_PRESETS.find((p) => p.value !== 'fit' && Math.abs((p.value as number) - zoom) < 0.01)?.value ?? ''}
+          onChange={(e) => {
+            const v = e.target.value
+            if (v === 'fit') fitToRoom()
+            else if (v !== '') setZoomLevel(Number(v))
+          }}
+          className="px-1 py-0.5 text-xs text-gray-600 bg-transparent hover:bg-gray-100 rounded cursor-pointer focus:outline-none min-w-[54px] text-center"
+        >
+          <option value="" disabled>{Math.round(zoom * 100)}%</option>
+          {ZOOM_PRESETS.map((p) => (
+            <option key={String(p.value)} value={String(p.value)}>{p.label}</option>
+          ))}
+        </select>
+        <button onClick={zoomIn} className="px-1.5 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded">+</button>
+        <button
+          onClick={toggleZoomLock}
+          title={zoomLocked ? 'Zoom locked — click to unlock' : 'Lock zoom'}
+          className={`px-1.5 py-0.5 text-xs rounded border-l transition-colors ${
+            zoomLocked
+              ? 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+              : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+          }`}
+        >
+          {zoomLocked ? '🔒' : '🔓'}
         </button>
-        <button onClick={onZoomIn}    className="px-1.5 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded">+</button>
       </div>
 
       <div className="flex-1" />

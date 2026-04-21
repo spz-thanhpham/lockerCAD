@@ -14,6 +14,8 @@ export interface LockerObject {
   depthColor?: string  // depth face base colour (defaults to color if unset)
   rotation: number
   templateId?: string
+  showLabel?: boolean      // false hides the name label; default true
+  showDimension?: boolean  // false hides the W×H dimension text; default true
 }
 
 // ─── Locker Block assembly ───────────────────────────────────────
@@ -79,6 +81,16 @@ export interface LockerBlock {
   borderRadius?: number  // outer block border corner radius in px
   cellCornerRadius?: number // default door corner radius for all cells in this block
   locksets?: Array<{ color?: string }> // per-tray color overrides; index matches lockset channel order
+  showBlockLabel?: boolean      // show/hide the block name label; default true
+  showCellLabels?: boolean      // show/hide all cell label texts; default true
+  showCellDimensions?: boolean  // show/hide all cell W×H dimension texts; default true
+  showDepthLabel?: boolean      // show/hide the depth annotation arrow+text; default true
+  legsHeightMm?: number      // 0 or undefined = no legs
+  legsWidthMm?: number       // leg foot width in mm (default 50)
+  legsDepthMm?: number       // leg depth in mm for 3D projection (defaults to cfg.depthMm)
+  legsInsetMm?: number       // how far outer legs are from block edges in mm (default = leftMargin/2)
+  legsCornerRadius?: number  // corner radius in px (default 2)
+  legsColor?: string         // leg colour (defaults to frameColor)
   config: LockerBlockConfig
 }
 
