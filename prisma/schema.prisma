@@ -19,6 +19,8 @@ model User {
   projects  Project[]
   accounts  Account[]
   sessions  Session[]
+  receivedShares SharePermission[] @relation("ReceivedShares")
+  grantedShares  SharePermission[] @relation("GrantedShares")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -64,6 +66,7 @@ model Project {
   owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId    String
   layouts    Layout[]
+  shares     SharePermission[]
   shareToken String?  @unique
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -79,6 +82,7 @@ model Layout {
   roomDepth   Float    // mm
   scale       Float    @default(0.2)  // px per mm (default: 1px = 5mm)
   version     Int      @default(1)
+  shares      SharePermission[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -96,4 +100,24 @@ enum Role {
   DESIGNER
   CUSTOMER
   ADMIN
+}
+
+enum Permission {
+  VIEW
+  EDIT
+}
+
+model SharePermission {
+  id          String     @id @default(cuid())
+  projectId   String?
+  layoutId    String?
+  userId      String
+  permission  Permission @default(VIEW)
+  grantedById String
+  createdAt   DateTime   @default(now())
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  layout    Layout?  @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+  user      User     @relation("ReceivedShares", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User     @relation("GrantedShares", fields: [grantedById], references: [id], onDelete: Cascade)
 }

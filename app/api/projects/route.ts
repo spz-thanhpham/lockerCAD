@@ -9,12 +9,40 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const userId = (session.user as any).id as string
+  const view = req.nextUrl.searchParams.get('view')
+
+  if (view === 'shared') {
+    const shares = await (prisma as any).sharePermission.findMany({
+      where: { userId, projectId: { not: null } },
+      include: {
+        project: {
+          include: {
+            owner: { select: { id: true, name: true, email: true } },
+            _count: { select: { layouts: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    const result = shares
+      .filter((s: any) => s.project !== null)
+      .map((s: any) => ({
+        ...s.project,
+        sharePermission: s.permission,
+        shareId: s.id,
+      }))
+
+    return NextResponse.json(result)
+  }
+
   const projects = await prisma.project.findMany({
-    where: { ownerId: session.user.id },
+    where: { ownerId: userId },
     orderBy: { createdAt: 'asc' },
     include: {
       _count: { select: { layouts: true } },

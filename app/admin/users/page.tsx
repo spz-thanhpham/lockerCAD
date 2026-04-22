@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 type Provider = { provider: string }
 type User = {
@@ -105,6 +106,9 @@ export default function AdminUsersPage() {
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/layouts')} className="text-sm text-gray-500 hover:text-gray-700">← Back</button>
           <h1 className="text-sm font-semibold text-gray-800">User Management</h1>
+          <Link href="/admin/shares" className="text-xs text-gray-500 hover:text-blue-600 border rounded px-2 py-1 hover:border-blue-300">
+            Manage Shares
+          </Link>
         </div>
         <button onClick={() => setShowNew(true)}
           className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700">
