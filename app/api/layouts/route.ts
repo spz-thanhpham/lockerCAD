@@ -50,31 +50,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(result)
   }
 
-  // For shared project layouts, allow access if user has share permission on the project
   if (projectId) {
-    const ownedProject = await prisma.project.findFirst({
-      where: { id: projectId, ownerId: userId },
-    })
-
-    if (!ownedProject) {
-      // Check if user has a share permission on this project
-      const sharePermission = await (prisma as any).sharePermission.findFirst({
-        where: { projectId, userId },
-      })
-      if (!sharePermission) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
-
-    const layouts = await prisma.layout.findMany({
-      where: { projectId },
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true, name: true, projectId: true,
-        roomWidth: true, roomDepth: true,
-        createdAt: true, updatedAt: true,
-      },
-    })
+    // Check access and fetch layouts in parallel
+    const [layouts, hasAccess] = await Promise.all([
+      prisma.layout.findMany({
+        where: { projectId },
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true, name: true, projectId: true,
+          roomWidth: true, roomDepth: true,
+          createdAt: true, updatedAt: true,
+        },
+      }),
+      prisma.project.findFirst({
+        where: {
+          id: projectId,
+          OR: [
+            { ownerId: userId },
+            { shares: { some: { userId } } } as any,
+          ],
+        },
+        select: { id: true },
+      }),
+    ])
+    if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     return NextResponse.json(layouts)
   }
 

@@ -2,7 +2,7 @@
 // app/layouts/page.tsx
 // Dashboard — companies (projects) on the left, layouts for the selected company on the right.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
@@ -304,29 +304,20 @@ export default function LayoutsPage() {
   const [error, setError]                     = useState<string | null>(null)
   const [shareModal, setShareModal]           = useState<{ id: string; name: string } | null>(null)
 
-  const loadCompanies = useCallback(async () => {
-    setLoadingCo(true)
-    try {
-      const res = await fetch('/api/projects')
-      if (res.status === 401) { router.push('/api/auth/signin'); return }
-      const data = await res.json()
-      setCompanies(data)
-      if (data.length > 0 && !selectedId) setSelectedId(data[0].id)
-    } catch {
-      setError('Failed to load companies')
-    } finally {
-      setLoadingCo(false)
-    }
+  // Initial load — single request returns companies + shared + first project layouts
+  useEffect(() => {
+    fetch('/api/dashboard')
+      .then(async (res) => {
+        if (res.status === 401) { router.push('/auth/signin'); return }
+        const data = await res.json()
+        setCompanies(data.projects ?? [])
+        setSharedCompanies(data.sharedProjects ?? [])
+        setLayouts(data.layouts ?? [])
+        if (data.firstProjectId) setSelectedId(data.firstProjectId)
+      })
+      .catch(() => setError('Failed to load'))
+      .finally(() => setLoadingCo(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const loadSharedCompanies = useCallback(async () => {
-    try {
-      const res = await fetch('/api/projects?view=shared')
-      if (res.ok) setSharedCompanies(await res.json())
-    } catch {
-      // ignore
-    }
   }, [])
 
   const loadLayouts = useCallback(async (projectId: string) => {
@@ -342,9 +333,15 @@ export default function LayoutsPage() {
     }
   }, [])
 
-  useEffect(() => { loadCompanies() }, [loadCompanies])
-  useEffect(() => { loadSharedCompanies() }, [loadSharedCompanies])
-  useEffect(() => { if (selectedId) loadLayouts(selectedId) }, [selectedId, loadLayouts])
+  // Only refetch layouts when user explicitly changes selected company
+  const prevSelectedId = useRef<string | null>(null)
+  useEffect(() => {
+    if (!selectedId || selectedId === prevSelectedId.current) return
+    prevSelectedId.current = selectedId
+    // Skip the initial load (already populated by dashboard endpoint)
+    if (loadingCo) return
+    loadLayouts(selectedId)
+  }, [selectedId, loadLayouts, loadingCo])
 
   // When switching tabs, auto-select first item
   useEffect(() => {
