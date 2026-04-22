@@ -14,7 +14,7 @@ export async function GET() {
 
   const userId = (session.user as any).id as string
 
-  // Fire all three queries in parallel
+  // Fire all queries in parallel; sharePermission may not exist yet — fail gracefully
   const [projects, sharedShares] = await Promise.all([
     prisma.project.findMany({
       where: { ownerId: userId },
@@ -32,7 +32,7 @@ export async function GET() {
         },
       },
       orderBy: { createdAt: 'asc' },
-    }),
+    }).catch(() => []),
   ])
 
   const firstProjectId = projects[0]?.id ?? null

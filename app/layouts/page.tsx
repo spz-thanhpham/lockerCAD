@@ -304,16 +304,24 @@ export default function LayoutsPage() {
   const [error, setError]                     = useState<string | null>(null)
   const [shareModal, setShareModal]           = useState<{ id: string; name: string } | null>(null)
 
+  // Set to true before setSelectedId in the dashboard load to skip the
+  // redundant loadLayouts that the selectedId effect would otherwise trigger.
+  const skipNextLayoutLoad = useRef(false)
+
   // Initial load — single request returns companies + shared + first project layouts
   useEffect(() => {
     fetch('/api/dashboard')
       .then(async (res) => {
         if (res.status === 401) { router.push('/auth/signin'); return }
+        if (!res.ok) throw new Error('failed')
         const data = await res.json()
         setCompanies(data.projects ?? [])
         setSharedCompanies(data.sharedProjects ?? [])
         setLayouts(data.layouts ?? [])
-        if (data.firstProjectId) setSelectedId(data.firstProjectId)
+        if (data.firstProjectId) {
+          skipNextLayoutLoad.current = true
+          setSelectedId(data.firstProjectId)
+        }
       })
       .catch(() => setError('Failed to load'))
       .finally(() => setLoadingCo(false))
@@ -333,15 +341,11 @@ export default function LayoutsPage() {
     }
   }, [])
 
-  // Only refetch layouts when user explicitly changes selected company
-  const prevSelectedId = useRef<string | null>(null)
   useEffect(() => {
-    if (!selectedId || selectedId === prevSelectedId.current) return
-    prevSelectedId.current = selectedId
-    // Skip the initial load (already populated by dashboard endpoint)
-    if (loadingCo) return
+    if (!selectedId) return
+    if (skipNextLayoutLoad.current) { skipNextLayoutLoad.current = false; return }
     loadLayouts(selectedId)
-  }, [selectedId, loadLayouts, loadingCo])
+  }, [selectedId, loadLayouts])
 
   // When switching tabs, auto-select first item
   useEffect(() => {
