@@ -295,7 +295,7 @@ export default function LockerBlockObjectComponent({
 
         {/* Selection / multi-select outline — covers legs too */}
         <Rect width={wPx} height={totalHPx} fill="transparent"
-          stroke={outlineStroke} strokeWidth={outlineWidth} />
+          stroke={outlineStroke} strokeWidth={outlineWidth} listening={false} />
 
         {/* TOP panel */}
         <Rect x={0} y={0} width={wPx} height={topH} fill={frameColor} />
@@ -319,6 +319,7 @@ export default function LockerBlockObjectComponent({
               fill={trayColor}
               stroke={isTraySel ? '#f59e0b' : 'transparent'}
               strokeWidth={isTraySel ? 2 : 0}
+              onMouseDown={(e) => e.cancelBubble = true}
               onClick={(e) => { e.cancelBubble = true; onSelectLockset(block.id, i) }}
               onTap={(e)   => { e.cancelBubble = true; onSelectLockset(block.id, i) }}
             />
@@ -346,13 +347,14 @@ export default function LockerBlockObjectComponent({
                 const startY  = cellY
                 const cellRadius = cell.cornerRadius ?? block.cellCornerRadius ?? 1
                 const node = (
-                  <Group key={`${col.id}-${ri2}`}
-                    onClick={(e) => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
-                    onTap={(e)   => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
-                  >
+                  <Group key={`${col.id}-${ri2}`}>
                     <Rect x={li} y={startY} width={doorW} height={doorH}
                       fill={fill} stroke={isCellSel ? '#f59e0b' : DOOR_STROKE}
-                      strokeWidth={isCellSel ? 2 : 0.5} cornerRadius={cellRadius} />
+                      strokeWidth={isCellSel ? 2 : 0.5} cornerRadius={cellRadius}
+                      onMouseDown={(e) => e.cancelBubble = true}
+                      onClick={(e) => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
+                      onTap={(e)   => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
+                    />
                     {/* centre crease line */}
                     <Line
                       points={[li + doorW / 2, startY + 4, li + doorW / 2, startY + doorH - 4]}
@@ -403,7 +405,7 @@ export default function LockerBlockObjectComponent({
           <Rect width={wPx} height={hPx} fill="transparent"
             stroke={block.borderColor ?? '#334155'}
             strokeWidth={block.borderWidth}
-            cornerRadius={block.borderRadius ?? 0} />
+            cornerRadius={block.borderRadius ?? 0} listening={false} />
         )}
 
         {/* Block label — rendered ABOVE the frame (shifted further up when depth is shown) */}
@@ -414,7 +416,7 @@ export default function LockerBlockObjectComponent({
             <Text x={0} y={depthDy - (fs + 4)} width={wPx} align="center"
               text={block.label}
               fontSize={fs} fontFamily="monospace" fontStyle="bold"
-              fill={ls.color} />
+              fill={ls.color} listening={false} />
           )
         })()}
 
