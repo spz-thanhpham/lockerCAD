@@ -507,16 +507,10 @@ function CanvasEditor() {
   // Lockset tray selection (within a block)
   const [selectedLockset, setSelectedLockset] = useState<{ blockId: string; locksetIdx: number } | null>(null)
 
-  // Clear sub-selections when the selected block changes — but keep them if they belong to the
-  // block that is NOW selected (handles single-click cell/lockset → block+sub selected together)
-  useEffect(() => {
-    setShowRenumber(false)
-    setSelectedCell((prev) => (prev?.blockId === selectedId ? prev : null))
-    setSelectedLockset((prev) => (prev?.blockId === selectedId ? prev : null))
-  }, [selectedId])
+  // No effect needed: sub-selections are scoped by blockId and naturally
+  // become inactive when selectedId points to a different block.
 
   const handleSelectCell = useCallback((blockId: string, colIdx: number, cellIdx: number) => {
-    // Always ensure the block is selected first (cell click no longer bubbles to block onClick)
     selectItem(blockId, 'block')
     setSelectedLockset(null)
     setSelectedCell({ blockId, colIdx, cellIdx })
@@ -528,27 +522,31 @@ function CanvasEditor() {
     setSelectedLockset({ blockId, locksetIdx })
   }, [selectItem])
 
-  const selectedLocksetColor = selectedLockset && selectedBlock
-    ? selectedBlock.locksets?.[selectedLockset.locksetIdx]?.color ?? null
+  // Sub-selections are only active when they belong to the currently selected block
+  const activeCell    = selectedCell?.blockId    === selectedId ? selectedCell    : null
+  const activeLockset = selectedLockset?.blockId === selectedId ? selectedLockset : null
+
+  const selectedLocksetColor = activeLockset && selectedBlock
+    ? selectedBlock.locksets?.[activeLockset.locksetIdx]?.color ?? null
     : null
 
   const updateLocksetColor = useCallback((color: string | undefined) => {
-    if (!selectedLockset || !selectedBlock) return
-    const { locksetIdx } = selectedLockset
+    if (!activeLockset || !selectedBlock) return
+    const { locksetIdx } = activeLockset
     const existing = selectedBlock.locksets ?? []
     const updated  = [...existing]
     while (updated.length <= locksetIdx) updated.push({})
     updated[locksetIdx] = color !== undefined ? { ...updated[locksetIdx], color } : {}
     updateLockerBlock({ ...selectedBlock, locksets: updated })
-  }, [selectedLockset, selectedBlock, updateLockerBlock])
+  }, [activeLockset, selectedBlock, updateLockerBlock])
 
-  const selectedCellData = selectedCell && selectedBlock
-    ? selectedBlock.config.columns[selectedCell.colIdx]?.cells[selectedCell.cellIdx] ?? null
+  const selectedCellData = activeCell && selectedBlock
+    ? selectedBlock.config.columns[activeCell.colIdx]?.cells[activeCell.cellIdx] ?? null
     : null
 
   const updateCell = useCallback((changes: Partial<LockerCell>) => {
-    if (!selectedCell || !selectedBlock || !selectedCellData) return
-    const { colIdx, cellIdx } = selectedCell
+    if (!activeCell || !selectedBlock || !selectedCellData) return
+    const { colIdx, cellIdx } = activeCell
 
     const newCols = selectedBlock.config.columns.map((col, ci) => {
       if (ci !== colIdx) return col
@@ -570,11 +568,11 @@ function CanvasEditor() {
       return { ...col, cells: newCells }
     })
     updateLockerBlock({ ...selectedBlock, config: { ...selectedBlock.config, columns: newCols } })
-  }, [selectedCell, selectedBlock, selectedCellData, lockFrame, updateLockerBlock])
+  }, [activeCell, selectedBlock, selectedCellData, lockFrame, updateLockerBlock])
 
   const deleteCell = useCallback(() => {
-    if (!selectedCell || !selectedBlock) return
-    const { colIdx, cellIdx } = selectedCell
+    if (!activeCell || !selectedBlock) return
+    const { colIdx, cellIdx } = activeCell
     const newCols = selectedBlock.config.columns
       .map((col, ci) => ci === colIdx
         ? { ...col, cells: col.cells.filter((_, ri) => ri !== cellIdx) }
@@ -583,7 +581,7 @@ function CanvasEditor() {
     setSelectedCell(null)
     setShowRenumber(true)
     updateLockerBlock({ ...selectedBlock, config: { ...selectedBlock.config, columns: newCols } })
-  }, [selectedCell, selectedBlock, updateLockerBlock])
+  }, [activeCell, selectedBlock, updateLockerBlock])
 
   // Sequentially re-label all cells L01, L02, ... across columns (left→right, top→bottom)
   const renumberCells = useCallback((prefix = 'L') => {
@@ -973,8 +971,8 @@ function CanvasEditor() {
             onSelectItem={selectItem} onToggleSelectItem={toggleSelectItem} onSelectBatch={selectBatch}
             onSelectCell={handleSelectCell}
             onSelectLockset={handleSelectLockset}
-            selectedCellKey={selectedCell ? `${selectedCell.blockId}:${selectedCell.colIdx}:${selectedCell.cellIdx}` : undefined}
-            selectedLocksetKey={selectedLockset ? `${selectedLockset.blockId}:${selectedLockset.locksetIdx}` : undefined}
+            selectedCellKey={activeCell ? `${activeCell.blockId}:${activeCell.colIdx}:${activeCell.cellIdx}` : undefined}
+            selectedLocksetKey={activeLockset ? `${activeLockset.blockId}:${activeLockset.locksetIdx}` : undefined}
             onUpdateLocker={updateLocker} onUpdateLockerBlock={updateLockerBlock}
             onUpdateTextLabel={updateTextLabel} onAddTextLabel={addTextLabel}
             onUpdateShape={updateShape} onAddShape={addShape}
@@ -996,11 +994,11 @@ function CanvasEditor() {
           )}
 
           {/* ── Lockset tray properties (shown when a tray is clicked) ── */}
-          {!isMultiSelect && selectedType === 'block' && selectedBlock && selectedLockset && (
+          {!isMultiSelect && selectedType === 'block' && selectedBlock && activeLockset && (
             <div className="p-3 space-y-3 text-xs text-gray-600 border-b">
               <div className="flex items-center justify-between">
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">
-                  Lockset Tray {selectedLockset.locksetIdx + 1}
+                  Lockset Tray {activeLockset.locksetIdx + 1}
                 </p>
                 <button onClick={() => setSelectedLockset(null)}
                   className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
@@ -1026,11 +1024,11 @@ function CanvasEditor() {
           )}
 
           {/* ── Cell-level properties (shown when a cell is clicked) ── */}
-          {!isMultiSelect && selectedType === 'block' && selectedBlock && selectedCell && selectedCellData && (
+          {!isMultiSelect && selectedType === 'block' && selectedBlock && activeCell && selectedCellData && (
             <div className="p-3 space-y-3 text-xs text-gray-600 border-b">
               <div className="flex items-center justify-between">
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">
-                  Cell — col {selectedCell.colIdx + 1} · row {selectedCell.cellIdx + 1}
+                  Cell — col {activeCell.colIdx + 1} · row {activeCell.cellIdx + 1}
                 </p>
                 <button onClick={() => setSelectedCell(null)}
                   className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
@@ -1178,7 +1176,7 @@ function CanvasEditor() {
           )}
 
           {/* ── Renumber banner (after a cell is deleted) ── */}
-          {!isMultiSelect && selectedType === 'block' && selectedBlock && showRenumber && !selectedCell && (
+          {!isMultiSelect && selectedType === 'block' && selectedBlock && showRenumber && !activeCell && (
             <div className="mx-3 my-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
               <p className="text-amber-700 mb-2">Cell deleted. Renumber remaining cells?</p>
               <div className="flex gap-1">
