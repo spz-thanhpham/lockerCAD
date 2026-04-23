@@ -320,6 +320,7 @@ export default function LockerBlockObjectComponent({
               stroke={isTraySel ? '#f59e0b' : 'transparent'}
               strokeWidth={isTraySel ? 2 : 0}
               onClick={(e) => { e.cancelBubble = true; onSelectLockset(block.id, i) }}
+              onTap={(e)   => { e.cancelBubble = true; onSelectLockset(block.id, i) }}
             />
           )
         })}
@@ -347,6 +348,7 @@ export default function LockerBlockObjectComponent({
                 const node = (
                   <Group key={`${col.id}-${ri2}`}
                     onClick={(e) => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
+                    onTap={(e)   => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
                   >
                     <Rect x={li} y={startY} width={doorW} height={doorH}
                       fill={fill} stroke={isCellSel ? '#f59e0b' : DOOR_STROKE}
