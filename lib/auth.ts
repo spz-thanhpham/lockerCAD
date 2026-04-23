@@ -23,21 +23,33 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
+        const adminEmail    = process.env.ADMIN_EMAIL
+        const adminPassword = process.env.ADMIN_PASSWORD
+
+        if (!adminEmail || !adminPassword) {
+          console.error('[auth] ADMIN_EMAIL or ADMIN_PASSWORD env vars are not set')
+          return null
+        }
+
         if (
           !credentials?.email ||
           !credentials?.password ||
-          credentials.email    !== process.env.ADMIN_EMAIL ||
-          credentials.password !== process.env.ADMIN_PASSWORD
+          credentials.email    !== adminEmail ||
+          credentials.password !== adminPassword
         ) return null
 
         // Find-or-create the admin user in DB
-        const user = await prisma.user.upsert({
-          where:  { email: credentials.email },
-          update: {},
-          create: { email: credentials.email, name: 'Admin', role: 'ADMIN' },
-        })
-
-        return { id: user.id, email: user.email, name: user.name, role: user.role }
+        try {
+          const user = await prisma.user.upsert({
+            where:  { email: credentials.email },
+            update: {},
+            create: { email: credentials.email, name: 'Admin', role: 'ADMIN' },
+          })
+          return { id: user.id, email: user.email, name: user.name, role: user.role }
+        } catch (err) {
+          console.error('[auth] Failed to upsert admin user:', err)
+          return null
+        }
       },
     }),
 
