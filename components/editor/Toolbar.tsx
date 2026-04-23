@@ -20,7 +20,7 @@ const ZOOM_PRESETS = [
   { label: '300%', value: 3.00 },
 ] as const
 
-type Tool = 'select' | 'pan'
+type Tool = 'select' | 'pan' | 'text' | 'rect' | 'circle'
 
 interface Props {
   activeTool: Tool
@@ -28,6 +28,7 @@ interface Props {
   zoom: number
   onSave: () => void
   saving: boolean
+  autoSaving: boolean
   isDirty: boolean
   canvasData: CanvasData
   getStageDataUrl: (opts?: ExportImageOpts) => string | null
@@ -40,7 +41,7 @@ interface Props {
 export default function Toolbar({
   activeTool, onToolChange,
   zoom,
-  onSave, saving, isDirty,
+  onSave, saving, autoSaving, isDirty,
   canvasData, getStageDataUrl, projectName, onRenameProject, showDimensions,
   onSelectAll,
 }: Props) {
@@ -93,7 +94,13 @@ export default function Toolbar({
 
       {/* Tool mode */}
       <div className="flex items-center gap-1 border rounded p-0.5">
-        {([['select', '↖ Select'], ['pan', '✋ Pan']] as [Tool, string][]).map(([tool, label]) => (
+        {([
+          ['select', '↖ Select'],
+          ['pan',    '✋ Pan'],
+          ['text',   'T Text'],
+          ['rect',   '▭ Rect'],
+          ['circle', '○ Circle'],
+        ] as [Tool, string][]).map(([tool, label]) => (
           <button key={tool} onClick={() => onToolChange(tool)}
             className={`px-2 py-0.5 rounded text-xs transition-colors ${
               activeTool === tool ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
@@ -148,9 +155,13 @@ export default function Toolbar({
         <ExportDXF canvasData={canvasData} />
       </div>
 
-      <button onClick={onSave} disabled={saving}
-        className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50 ml-1">
-        {saving ? 'Saving…' : 'Save'}
+      <button onClick={onSave} disabled={saving || autoSaving}
+        className={`px-3 py-1 rounded text-xs disabled:opacity-60 ml-1 transition-colors ${
+          autoSaving
+            ? 'bg-amber-500 text-white'
+            : 'bg-blue-600 text-white hover:bg-blue-700'
+        }`}>
+        {saving || autoSaving ? '↺ Saving…' : 'Save'}
       </button>
     </header>
   )

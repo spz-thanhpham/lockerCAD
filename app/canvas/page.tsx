@@ -8,9 +8,10 @@ import { useCanvasStore, type AlignmentType } from '@/lib/store'
 import { useTemplateStore } from '@/lib/template-store'
 import { useLockerTemplateStore } from '@/lib/locker-template-store'
 import PropertiesPanel from '@/components/editor/PropertiesPanel'
+import NumericInput from '@/components/editor/NumericInput'
 import Toolbar from '@/components/editor/Toolbar'
 import LockerCreateForm from '@/components/editor/LockerCreateForm'
-import { type LockerBlock, type LockerCell, type OfficeInfo, type LabelPosition } from '@/types'
+import { type LockerBlock, type LockerCell, type TextLabel, type ShapeObject, type OfficeInfo, type LabelPosition, type LabelStyle, DEFAULT_LABEL_STYLE } from '@/types'
 import type { CanvasBoardHandle, ExportImageOpts } from '@/components/editor/CanvasBoard'
 import { captureCanvas } from '@/lib/canvas-capture'
 
@@ -24,35 +25,6 @@ export default function CanvasPage() {
   )
 }
 
-// ── Number input that lets the user type freely ───────────────────
-// Keeps a local draft string; only commits to the store on blur/Enter.
-function DraftNumberInput({
-  value, min, max, step, onCommit, className,
-}: {
-  value: number; min: number; max: number; step?: number
-  onCommit: (v: number) => void; className?: string
-}) {
-  const [draft, setDraft] = useState<string | null>(null)
-  const display = draft ?? String(value)
-  return (
-    <input
-      type="number" min={min} max={max} step={step}
-      value={display}
-      className={className}
-      onFocus={(e) => { setDraft(String(value)); e.target.select() }}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        const v = parseInt(draft ?? '', 10)
-        if (!isNaN(v) && v >= min && v <= max) onCommit(v)
-        setDraft(null)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-        if (e.key === 'Escape') setDraft(null)
-      }}
-    />
-  )
-}
 
 // ── Alignment panel ───────────────────────────────────────────────
 const ALIGN_BUTTONS: { key: AlignmentType; label: string; title: string }[] = [
@@ -137,6 +109,322 @@ function OfficeInfoEditor({ info, onChange }: { info: OfficeInfo; onChange: (k: 
   )
 }
 
+// ── Collapsible panel section ─────────────────────────────────────
+function PanelSection({
+  title, children, defaultOpen = false,
+}: {
+  title: string; children: React.ReactNode; defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="border-b shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-50 transition-colors"
+      >
+        {title}
+        <span className="text-gray-400 ml-1">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && <div className="px-3 pb-3">{children}</div>}
+    </div>
+  )
+}
+
+// ── Text label properties panel ───────────────────────────────────
+function TextLabelPanel({ label, onChange, onDelete }: {
+  label: TextLabel
+  onChange: (updated: TextLabel) => void
+  onDelete: (id: string) => void
+}) {
+  const update = (patch: Partial<TextLabel>) => onChange({ ...label, ...patch })
+  return (
+    <div className="p-3 space-y-3 text-xs text-gray-700">
+      <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Text label</p>
+
+      <div>
+        <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Text</label>
+        <textarea
+          value={label.text}
+          rows={2}
+          onChange={(e) => update({ text: e.target.value })}
+          className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-500 shrink-0">Font size</span>
+        <div className="flex items-center gap-1">
+          <NumericInput
+            value={label.fontSize}
+            min={6} max={200}
+            onCommit={(v) => update({ fontSize: v })}
+            className="w-16 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+          <span className="text-[10px] text-gray-400">px</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-gray-500">Style</span>
+        <div className="flex gap-1">
+          {(['normal', 'bold', 'italic'] as const).map((s) => (
+            <button key={s} onClick={() => update({ fontStyle: s })}
+              className={`px-2 py-0.5 border rounded text-[10px] capitalize transition-colors ${
+                label.fontStyle === s ? 'bg-blue-100 border-blue-400 text-blue-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-gray-500">Colour</span>
+        <div className="flex items-center gap-1.5">
+          <input type="color" value={label.color}
+            onChange={(e) => update({ color: e.target.value })}
+            className="w-6 h-6 rounded cursor-pointer border" />
+          <span className="text-[10px] font-mono text-gray-400">{label.color}</span>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Rotation</p>
+        <div className="flex gap-1 flex-wrap">
+          {[0, 90, 180, 270].map((r) => (
+            <button key={r} onClick={() => update({ rotation: r })}
+              className={`flex-1 py-0.5 rounded border text-[10px] transition-colors ${
+                label.rotation === r
+                  ? 'bg-blue-100 border-blue-400 text-blue-700 font-medium'
+                  : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}>
+              {r}°
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-1 border-t">
+        <span className="text-gray-500">Lock position</span>
+        <button
+          onClick={() => update({ locked: !label.locked })}
+          title={label.locked ? 'Unlock — allow moving' : 'Lock — prevent accidental moves'}
+          className={`px-2 py-0.5 border rounded text-[10px] transition-colors ${
+            label.locked
+              ? 'bg-amber-100 border-amber-400 text-amber-700 font-medium'
+              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {label.locked ? '🔒 Locked' : '🔓 Unlocked'}
+        </button>
+      </div>
+
+      <p className="text-[10px] text-gray-400">Double-click on canvas to edit text inline.</p>
+
+      <button onClick={() => onDelete(label.id)}
+        className="w-full mt-1 px-3 py-1.5 bg-red-50 text-red-600 rounded border border-red-200 text-xs hover:bg-red-100">
+        Delete label
+      </button>
+    </div>
+  )
+}
+
+// ── 3×3 label position grid ──────────────────────────────────────
+const POS_GRID: { pos: LabelPosition; icon: string }[][] = [
+  [{ pos: 'top-left',  icon: '↖' }, { pos: 'top-center',  icon: '↑' }, { pos: 'top-right',  icon: '↗' }],
+  [{ pos: 'mid-left',  icon: '←' }, { pos: 'center',      icon: '·' }, { pos: 'mid-right',  icon: '→' }],
+  [{ pos: 'bot-left',  icon: '↙' }, { pos: 'bot-center',  icon: '↓' }, { pos: 'bot-right',  icon: '↘' }],
+]
+
+function PositionGrid({ value, onChange }: { value: LabelPosition | undefined; onChange: (p: LabelPosition | undefined) => void }) {
+  return (
+    <div className="inline-grid grid-cols-3 gap-0.5">
+      {POS_GRID.flat().map(({ pos, icon }) => (
+        <button key={pos} title={pos} onClick={() => onChange(value === pos ? undefined : pos)}
+          className={`w-6 h-6 flex items-center justify-center text-xs rounded border transition-colors ${
+            value === pos
+              ? 'bg-blue-100 border-blue-400 text-blue-700'
+              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+          }`}>
+          {icon}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Right-click context menu ──────────────────────────────────────
+function ContextMenu({
+  x, y, hasSelection, hasClipboard, onClose,
+  onCopy, onPaste, onDuplicate, onDelete, onSelectAll,
+}: {
+  x: number; y: number
+  hasSelection: boolean; hasClipboard: boolean
+  onClose: () => void
+  onCopy: () => void; onPaste: () => void
+  onDuplicate: () => void; onDelete: () => void; onSelectAll: () => void
+}) {
+  useEffect(() => {
+    const close = () => onClose()
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [onClose])
+
+  const btn = 'w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-between gap-6'
+
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{ position: 'fixed', top: y, left: x, zIndex: 9999 }}
+      className="bg-white border border-gray-200 rounded shadow-lg py-1 min-w-[160px]"
+    >
+      <button className={btn} disabled={!hasSelection} onClick={() => { onCopy(); onClose() }}>
+        <span>Copy</span><span className="text-gray-400 text-[10px]">Ctrl+C</span>
+      </button>
+      <button className={btn} disabled={!hasClipboard} onClick={() => { onPaste(); onClose() }}>
+        <span>Paste</span><span className="text-gray-400 text-[10px]">Ctrl+V</span>
+      </button>
+      <button className={btn} disabled={!hasSelection} onClick={() => { onDuplicate(); onClose() }}>
+        <span>Duplicate</span><span className="text-gray-400 text-[10px]">Ctrl+D</span>
+      </button>
+      <div className="border-t my-1" />
+      <button className={btn} disabled={!hasSelection}
+        onClick={() => { onDelete(); onClose() }}
+        style={hasSelection ? { color: '#dc2626' } : undefined}>
+        <span>Delete</span><span className="text-gray-400 text-[10px]">Del</span>
+      </button>
+      <div className="border-t my-1" />
+      <button className={btn} onClick={() => { onSelectAll(); onClose() }}>
+        <span>Select All</span><span className="text-gray-400 text-[10px]">Ctrl+A</span>
+      </button>
+    </div>
+  )
+}
+
+// ── Shape properties panel ────────────────────────────────────────
+function ShapePanel({ shape, onChange, onDelete }: {
+  shape: ShapeObject
+  onChange: (updated: ShapeObject) => void
+  onDelete: (id: string) => void
+}) {
+  const update = (patch: Partial<ShapeObject>) => onChange({ ...shape, ...patch })
+  return (
+    <div className="p-3 space-y-3 text-xs text-gray-700">
+      <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">
+        {shape.type === 'rect' ? 'Rectangle' : 'Circle / Ellipse'}
+      </p>
+
+      {/* Fill */}
+      <div className="flex items-center justify-between">
+        <span className="text-gray-500">Fill</span>
+        <div className="flex items-center gap-1.5">
+          <input type="color"
+            value={shape.fill.startsWith('rgba') ? '#3b82f6' : shape.fill}
+            onChange={(e) => update({ fill: e.target.value })}
+            className="w-6 h-6 rounded cursor-pointer border" />
+          <button onClick={() => update({ fill: 'transparent' })}
+            title="No fill"
+            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+              shape.fill === 'transparent' ? 'bg-blue-100 border-blue-400 text-blue-700' : 'border-gray-200 text-gray-400 hover:bg-gray-50'
+            }`}>
+            None
+          </button>
+        </div>
+      </div>
+
+      {/* Fill opacity */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-500 shrink-0">Opacity</span>
+        <input
+          type="range" min={0} max={1} step={0.05}
+          value={shape.opacity}
+          onChange={(e) => update({ opacity: parseFloat(e.target.value) })}
+          className="flex-1"
+        />
+        <span className="text-[10px] text-gray-400 w-8 text-right">
+          {Math.round(shape.opacity * 100)}%
+        </span>
+      </div>
+
+      {/* Stroke colour */}
+      <div className="flex items-center justify-between">
+        <span className="text-gray-500">Border colour</span>
+        <input type="color" value={shape.stroke}
+          onChange={(e) => update({ stroke: e.target.value })}
+          className="w-6 h-6 rounded cursor-pointer border" />
+      </div>
+
+      {/* Stroke width */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-500 shrink-0">Border width</span>
+        <div className="flex items-center gap-1">
+          <NumericInput
+            value={shape.strokeWidth}
+            min={0} max={20}
+            onCommit={(v) => update({ strokeWidth: v })}
+            className="w-14 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+          <span className="text-[10px] text-gray-400">px</span>
+        </div>
+      </div>
+
+      {/* Corner radius — rect only */}
+      {shape.type === 'rect' && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-gray-500 shrink-0">Corner radius</span>
+          <div className="flex items-center gap-1">
+            <NumericInput
+              value={shape.cornerRadius ?? 0}
+              min={0} max={200}
+              onCommit={(v) => update({ cornerRadius: v })}
+              className="w-14 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+            <span className="text-[10px] text-gray-400">px</span>
+          </div>
+        </div>
+      )}
+
+      {/* Rotation */}
+      <div>
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Rotation</p>
+        <div className="flex gap-1 flex-wrap">
+          {[0, 45, 90, 135, 180].map((r) => (
+            <button key={r} onClick={() => update({ rotation: r })}
+              className={`flex-1 py-0.5 rounded border text-[10px] transition-colors ${
+                shape.rotation === r
+                  ? 'bg-blue-100 border-blue-400 text-blue-700 font-medium'
+                  : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}>
+              {r}°
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Lock */}
+      <div className="flex items-center justify-between pt-1 border-t">
+        <span className="text-gray-500">Lock position</span>
+        <button
+          onClick={() => update({ locked: !shape.locked })}
+          className={`px-2 py-0.5 border rounded text-[10px] transition-colors ${
+            shape.locked
+              ? 'bg-amber-100 border-amber-400 text-amber-700 font-medium'
+              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+          }`}>
+          {shape.locked ? '🔒 Locked' : '🔓 Unlocked'}
+        </button>
+      </div>
+
+      <p className="text-[10px] text-gray-400">Drag handles to resize · drag shape to move.</p>
+
+      <button onClick={() => onDelete(shape.id)}
+        className="w-full mt-1 px-3 py-1.5 bg-red-50 text-red-600 rounded border border-red-200 text-xs hover:bg-red-100">
+        Delete shape
+      </button>
+    </div>
+  )
+}
+
 // ── Main editor ───────────────────────────────────────────────────
 function CanvasEditor() {
   const searchParams   = useSearchParams()
@@ -144,21 +432,28 @@ function CanvasEditor() {
   const projectId      = searchParams.get('projectId')
   const canvasBoardRef  = useRef<CanvasBoardHandle>(null)
 
-  const [activeTool, setActiveTool]   = useState<'select' | 'pan'>('select')
+  const [activeTool, setActiveTool]   = useState<'select' | 'pan' | 'text' | 'rect' | 'circle'>('select')
   const [zoom, setZoom]               = useState(1)
+  const [cadView, setCadView]         = useState(false)
   const [saving, setSaving]           = useState(false)
+  const [autoSaving, setAutoSaving]   = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [saveCountdown, setSaveCountdown] = useState<number | null>(null)
   const [editingBlock, setEditingBlock] = useState<LockerBlock | null>(null)
   const savedLayoutId = useRef<string | null>(layoutId)
   const savedProjectId = useRef<string | null>(projectId)
 
   const lockers        = useCanvasStore((s) => s.lockers)
   const lockerBlocks   = useCanvasStore((s) => s.lockerBlocks)
+  const textLabels     = useCanvasStore((s) => s.textLabels)
+  const shapes         = useCanvasStore((s) => s.shapes)
   const room           = useCanvasStore((s) => s.room)
   const selectedId     = useCanvasStore((s) => s.selectedId)
   const selectedType   = useCanvasStore((s) => s.selectedType)
   const selectedIds    = useCanvasStore((s) => s.selectedIds)
-  const showDimensions = useCanvasStore((s) => s.showDimensions)
-  const showDepth      = useCanvasStore((s) => s.showDepth)
+  const showDimensions      = useCanvasStore((s) => s.showDimensions)
+  const showDepth           = useCanvasStore((s) => s.showDepth)
+  const showBlockDimensions = useCanvasStore((s) => s.showBlockDimensions)
   const isDirty        = useCanvasStore((s) => s.isDirty)
   const projectName    = useCanvasStore((s) => s.projectName)
   const labelStyle     = useCanvasStore((s) => s.labelStyle)
@@ -170,14 +465,26 @@ function CanvasEditor() {
   const addLockerBlock    = useCanvasStore((s) => s.addLockerBlock)
   const updateLockerBlock = useCanvasStore((s) => s.updateLockerBlock)
   const deleteLockerBlock = useCanvasStore((s) => s.deleteLockerBlock)
+  const addTextLabel      = useCanvasStore((s) => s.addTextLabel)
+  const updateTextLabel   = useCanvasStore((s) => s.updateTextLabel)
+  const deleteTextLabel   = useCanvasStore((s) => s.deleteTextLabel)
+  const addShape          = useCanvasStore((s) => s.addShape)
+  const updateShape       = useCanvasStore((s) => s.updateShape)
+  const deleteShape       = useCanvasStore((s) => s.deleteShape)
+  const copySelected      = useCanvasStore((s) => s.copySelected)
+  const paste             = useCanvasStore((s) => s.paste)
+  const duplicate         = useCanvasStore((s) => s.duplicate)
+  const deleteSelected    = useCanvasStore((s) => s.deleteSelected)
+  const hasClipboard      = useCanvasStore((s) => s.clipboard.length > 0)
   const selectItem        = useCanvasStore((s) => s.selectItem)
   const toggleSelectItem  = useCanvasStore((s) => s.toggleSelectItem)
   const selectBatch       = useCanvasStore((s) => s.selectBatch)
   const bulkMove          = useCanvasStore((s) => s.bulkMove)
   const selectAll         = useCanvasStore((s) => s.selectAll)
   const alignItems        = useCanvasStore((s) => s.alignItems)
-  const setShowDimensions = useCanvasStore((s) => s.setShowDimensions)
-  const setShowDepth      = useCanvasStore((s) => s.setShowDepth)
+  const setShowDimensions      = useCanvasStore((s) => s.setShowDimensions)
+  const setShowDepth           = useCanvasStore((s) => s.setShowDepth)
+  const setShowBlockDimensions = useCanvasStore((s) => s.setShowBlockDimensions)
   const setLabelStyle     = useCanvasStore((s) => s.setLabelStyle)
   const setOfficeInfo     = useCanvasStore((s) => s.setOfficeInfo)
   const setProjectName    = useCanvasStore((s) => s.setProjectName)
@@ -187,8 +494,10 @@ function CanvasEditor() {
   const markSaved         = useCanvasStore((s) => s.markSaved)
   const resetCanvas       = useCanvasStore((s) => s.resetCanvas)
 
-  const selectedLocker = selectedType === 'locker' ? lockers.find((l) => l.id === selectedId) ?? null : null
-  const selectedBlock  = selectedType === 'block'  ? lockerBlocks.find((b) => b.id === selectedId) ?? null : null
+  const selectedLocker    = selectedType === 'locker'    ? lockers.find((l) => l.id === selectedId) ?? null : null
+  const selectedBlock     = selectedType === 'block'     ? lockerBlocks.find((b) => b.id === selectedId) ?? null : null
+  const selectedTextLabel = selectedType === 'textLabel' ? textLabels.find((t) => t.id === selectedId) ?? null : null
+  const selectedShape     = selectedType === 'shape'     ? shapes.find((sh) => sh.id === selectedId) ?? null : null
 
   // Cell-level selection (within a block)
   const [selectedCell, setSelectedCell] = useState<{ blockId: string; colIdx: number; cellIdx: number } | null>(null)
@@ -198,20 +507,26 @@ function CanvasEditor() {
   // Lockset tray selection (within a block)
   const [selectedLockset, setSelectedLockset] = useState<{ blockId: string; locksetIdx: number } | null>(null)
 
-  // Clear sub-selections whenever the block selection changes
-  useEffect(() => { setSelectedCell(null); setShowRenumber(false); setSelectedLockset(null) }, [selectedId])
+  // Clear sub-selections when the selected block changes — but keep them if they belong to the
+  // block that is NOW selected (handles single-click cell/lockset → block+sub selected together)
+  useEffect(() => {
+    setShowRenumber(false)
+    setSelectedCell((prev) => (prev?.blockId === selectedId ? prev : null))
+    setSelectedLockset((prev) => (prev?.blockId === selectedId ? prev : null))
+  }, [selectedId])
 
   const handleSelectCell = useCallback((blockId: string, colIdx: number, cellIdx: number) => {
-    if (selectedId !== blockId) selectItem(blockId, 'block')
+    // Always ensure the block is selected first (cell click no longer bubbles to block onClick)
+    selectItem(blockId, 'block')
     setSelectedLockset(null)
     setSelectedCell({ blockId, colIdx, cellIdx })
-  }, [selectedId, selectItem])
+  }, [selectItem])
 
   const handleSelectLockset = useCallback((blockId: string, locksetIdx: number) => {
-    if (selectedId !== blockId) selectItem(blockId, 'block')
+    selectItem(blockId, 'block')
     setSelectedCell(null)
     setSelectedLockset({ blockId, locksetIdx })
-  }, [selectedId, selectItem])
+  }, [selectItem])
 
   const selectedLocksetColor = selectedLockset && selectedBlock
     ? selectedBlock.locksets?.[selectedLockset.locksetIdx]?.color ?? null
@@ -315,14 +630,25 @@ function CanvasEditor() {
     setSavingTpl(false)
   }
 
-  // Ctrl+A = select all
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); selectAll() }
+      const tag = (e.target as HTMLElement).tagName
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
+      if (editable) return
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); selectAll(); return }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); copySelected(); return }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); paste(); return }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicate(); return }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectAll])
+  }, [selectAll, copySelected, paste, duplicate, deleteSelected])
 
   // Reset store for new layouts; load existing layout from URL
   useEffect(() => {
@@ -369,6 +695,7 @@ function CanvasEditor() {
         }
       }
       markSaved()
+      setLastSavedAt(new Date())
     } catch (err) {
       console.error('Save failed:', err)
     } finally {
@@ -376,11 +703,43 @@ function CanvasEditor() {
     }
   }, [saving, getCanvasData, projectName, markSaved])
 
+  // ── Auto-save: 15 s of inactivity → save ─────────────────────────
+  const AUTO_SAVE_DELAY = 15_000
+  const lastChangeRef   = useRef<number>(0)
+  const handleSaveRef   = useRef(handleSave)
+  handleSaveRef.current = handleSave  // keep ref current without recreating intervals
+
+  // Track the timestamp of every state mutation while dirty
   useEffect(() => {
-    if (!isDirty) return
-    const timer = setTimeout(handleSave, 30_000)
-    return () => clearTimeout(timer)
-  }, [isDirty, handleSave])
+    return useCanvasStore.subscribe((state) => {
+      if (state.isDirty) lastChangeRef.current = Date.now()
+    })
+  }, [])
+
+  // Interval: auto-save when dirty + 15 s have elapsed since last change
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const state = useCanvasStore.getState()
+      if (!state.isDirty || saving || autoSaving) return
+      if (Date.now() - lastChangeRef.current < AUTO_SAVE_DELAY) return
+      setAutoSaving(true)
+      try { await handleSaveRef.current() } finally { setAutoSaving(false) }
+    }, 3_000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])  // intentionally empty — reads everything via refs
+
+  // Countdown display: ticks every second while dirty
+  useEffect(() => {
+    if (!isDirty) { setSaveCountdown(null); return }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((AUTO_SAVE_DELAY - (Date.now() - lastChangeRef.current)) / 1000))
+      setSaveCountdown(remaining)
+    }
+    tick()
+    const timer = setInterval(tick, 1_000)
+    return () => clearInterval(timer)
+  }, [isDirty])
 
   const getStageDataUrl = useCallback((opts?: ExportImageOpts) => captureCanvas(opts), [])
   const updateBlockColor = (block: LockerBlock, key: 'color' | 'frameColor' | 'locksetColor' | 'depthColor', value: string) =>
@@ -392,7 +751,7 @@ function CanvasEditor() {
       <Toolbar
         activeTool={activeTool} onToolChange={setActiveTool}
         zoom={zoom}
-        onSave={handleSave} saving={saving} isDirty={isDirty}
+        onSave={handleSave} saving={saving} autoSaving={autoSaving} isDirty={isDirty}
         canvasData={getCanvasData()} getStageDataUrl={getStageDataUrl}
         projectName={projectName} onRenameProject={setProjectName}
         showDimensions={showDimensions} onSelectAll={selectAll}
@@ -401,14 +760,15 @@ function CanvasEditor() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── Left sidebar ─────────────────────────────────────── */}
-        <aside className="w-52 border-r bg-white flex flex-col shrink-0 overflow-y-auto">
-          <div className="p-3 border-b">
+        <aside className="w-52 border-r bg-white flex flex-col shrink-0">
+
+          {/* Always-visible: add block button */}
+          <div className="px-3 py-2 border-b shrink-0">
             <LockerCreateForm onAdd={addLockerBlock} />
           </div>
 
-          {/* Quick add — lockers */}
-          <div className="p-3 border-b">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick add — lockers</h2>
+          {/* Collapsible sections — no scroll; collapse to fit */}
+          <PanelSection title="Quick add — lockers">
             <div className="space-y-1.5">
               {lockerTpls.map((t) => (
                 <div key={t.id} className="group">
@@ -416,16 +776,16 @@ function CanvasEditor() {
                     <div className="border rounded p-1.5 space-y-1 bg-blue-50">
                       {([['widthMm','W'],['heightMm','H'],['depthMm','D']] as [keyof typeof t, string][]).map(([k, lbl]) => (
                         <div key={k} className="flex items-center gap-1">
-                          <span className="text-[10px] text-gray-500 w-5 shrink-0">{lbl}</span>
-                          <input type="number" min={50} step={10}
+                          <span className="text-[10px] text-gray-500 w-4 shrink-0">{lbl}</span>
+                          <NumericInput min={50}
                             value={t[k] as number}
-                            onChange={(e) => updateLockerTpl(t.id, { [k]: Math.max(50, Number(e.target.value)) })}
+                            onCommit={(v) => updateLockerTpl(t.id, { [k]: v })}
                             className="min-w-0 flex-1 border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
                           <span className="text-[10px] text-gray-400 shrink-0">mm</span>
                         </div>
                       ))}
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-gray-500 w-14 shrink-0">Color</span>
+                        <span className="text-[10px] text-gray-500 w-10 shrink-0">Color</span>
                         <input type="color" value={t.color}
                           onChange={(e) => updateLockerTpl(t.id, { color: e.target.value })}
                           className="w-7 h-5 rounded cursor-pointer border" />
@@ -436,35 +796,33 @@ function CanvasEditor() {
                   ) : (
                     <div className="flex items-center gap-1">
                       <button onClick={() => addLocker(t)}
-                        className="flex-1 text-left px-2 py-1.5 rounded border text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors">
-                        <div className="font-medium text-gray-700">{t.widthMm}W × {t.heightMm}H</div>
-                        <div className="text-gray-400">Depth {t.depthMm}mm</div>
+                        className="flex-1 min-w-0 text-left px-2 py-1.5 rounded border text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                        <div className="font-medium text-gray-700 truncate">{t.widthMm}W × {t.heightMm}H</div>
+                        <div className="text-gray-400 truncate">D {t.depthMm}mm</div>
                       </button>
                       <button onClick={() => setEditingLTplId(t.id)} title="Edit"
-                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-500 transition-opacity text-sm">✎</button>
+                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-500 transition-opacity text-sm shrink-0">✎</button>
                       <button onClick={() => deleteLockerTpl(t.id)} title="Remove"
-                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity">×</button>
+                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity shrink-0">×</button>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-
-            {/* Add new locker template */}
             {addingLTpl ? (
               <div className="border rounded p-1.5 space-y-1 mt-2 bg-gray-50">
                 {([['widthMm','W'],['heightMm','H'],['depthMm','D']] as [keyof typeof newLTpl, string][]).map(([k, lbl]) => (
                   <div key={k} className="flex items-center gap-1">
-                    <span className="text-[10px] text-gray-500 w-5 shrink-0">{lbl}</span>
-                    <input type="number" min={50} step={10}
+                    <span className="text-[10px] text-gray-500 w-4 shrink-0">{lbl}</span>
+                    <NumericInput min={50}
                       value={newLTpl[k] as number}
-                      onChange={(e) => setNewLTpl((p) => ({ ...p, [k]: Math.max(50, Number(e.target.value)) }))}
+                      onCommit={(v) => setNewLTpl((p) => ({ ...p, [k]: v }))}
                       className="min-w-0 flex-1 border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
                     <span className="text-[10px] text-gray-400 shrink-0">mm</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-gray-500 w-14 shrink-0">Color</span>
+                  <span className="text-[10px] text-gray-500 w-10 shrink-0">Color</span>
                   <input type="color" value={newLTpl.color}
                     onChange={(e) => setNewLTpl((p) => ({ ...p, color: e.target.value }))}
                     className="w-7 h-5 rounded cursor-pointer border" />
@@ -482,22 +840,18 @@ function CanvasEditor() {
                 + Add locker type
               </button>
             )}
-          </div>
+          </PanelSection>
 
-          {/* Block templates */}
-          <div className="p-3 border-b">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick add — block templates</h2>
+          <PanelSection title="Block templates">
             {templates.length === 0 ? (
-              <p className="text-[10px] text-gray-400">
-                Select a block on canvas and click<br />"Save as template" to add it here.
-              </p>
+              <p className="text-[10px] text-gray-400">Select a block then "Save as template".</p>
             ) : (
               <div className="space-y-1.5">
                 {templates.map((tpl) => (
                   <div key={tpl.id} className="flex items-center gap-1 group">
                     <button
                       onClick={() => addLockerBlock({ ...tpl.block, x: 80, y: 80 })}
-                      className="flex-1 text-left px-2 py-1.5 rounded border text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                      className="flex-1 min-w-0 text-left px-2 py-1.5 rounded border text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors"
                     >
                       <div className="font-medium text-gray-700 truncate">{tpl.name}</div>
                       <div className="text-gray-400">
@@ -505,119 +859,115 @@ function CanvasEditor() {
                         {tpl.block.config.columns.reduce((s, c) => s + c.cells.length, 0)} cells
                       </div>
                     </button>
-                    <button
-                      onClick={() => deleteTemplate(tpl.id)}
-                      title="Remove template"
-                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
-                    >
-                      ×
-                    </button>
+                    <button onClick={() => deleteTemplate(tpl.id)} title="Remove"
+                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity shrink-0">×</button>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </PanelSection>
 
-          {/* Room dimensions */}
-          <div className="p-3 border-b space-y-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Room</p>
-            {([
-              ['widthMm',  'Width',     1000, 50000, 100],
-              ['depthMm',  'Depth',     1000, 50000, 100],
-            ] as [keyof typeof room, string, number, number, number][]).map(([key, label, min, max, step]) => (
-              <div key={key} className="flex items-center justify-between gap-1">
-                <span className="text-xs text-gray-500 w-10 shrink-0">{label}</span>
-                <DraftNumberInput
-                  value={room[key] as number}
-                  min={min} max={max} step={step}
-                  onCommit={(v) => setRoom({ [key]: v })}
-                  className="flex-1 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+          <PanelSection title="Room" defaultOpen>
+            <div className="space-y-2">
+              {([
+                ['widthMm', 'Width'],
+                ['depthMm', 'Depth'],
+              ] as [keyof typeof room, string][]).map(([key, label]) => (
+                <div key={key}>
+                  <label className="block text-[10px] text-gray-400 mb-0.5">{label} (mm)</label>
+                  <NumericInput
+                    value={room[key] as number}
+                    min={1000} max={50000}
+                    onCommit={(v) => setRoom({ [key]: v })}
+                    className="w-full border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Scale</label>
+                <select
+                  value={room.scale}
+                  onChange={(e) => setRoom({ scale: Number(e.target.value) })}
+                  className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value={0.05}>1:20  (1px = 20mm)</option>
+                  <option value={0.1}>1:10  (1px = 10mm)</option>
+                  <option value={0.2}>1:5   (1px = 5mm)</option>
+                  <option value={0.5}>1:2   (1px = 2mm)</option>
+                  <option value={1}>1:1   (1px = 1mm)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Snap grid (mm)</label>
+                <NumericInput
+                  value={room.gridSizeMm}
+                  min={10} max={1000}
+                  onCommit={(v) => setRoom({ gridSizeMm: v })}
+                  className="w-full border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
                 />
-                <span className="text-[10px] text-gray-400 w-6 shrink-0">mm</span>
               </div>
-            ))}
-            <div className="flex items-center justify-between gap-1">
-              <span className="text-xs text-gray-500 w-10 shrink-0">Scale</span>
-              <select
-                value={room.scale}
-                onChange={(e) => setRoom({ scale: Number(e.target.value) })}
-                className="flex-1 border rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-              >
-                <option value={0.05}>1:20 (0.05)</option>
-                <option value={0.1}>1:10 (0.1)</option>
-                <option value={0.2}>1:5 (0.2)</option>
-                <option value={0.5}>1:2 (0.5)</option>
-                <option value={1}>1:1 (1.0)</option>
-              </select>
             </div>
-            <div className="flex items-center justify-between gap-1">
-              <span className="text-xs text-gray-500 w-10 shrink-0">Grid</span>
-              <DraftNumberInput
-                value={room.gridSizeMm}
-                min={10} max={1000} step={10}
-                onCommit={(v) => setRoom({ gridSizeMm: v })}
-                className="flex-1 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
-              />
-              <span className="text-[10px] text-gray-400 w-6 shrink-0">mm</span>
-            </div>
-          </div>
+          </PanelSection>
 
-          {/* Label style */}
-          <div className="p-3 border-b space-y-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Label style</p>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">Font size</span>
-              <div className="flex items-center gap-1">
-                <input type="number" min={0} max={32} step={1}
-                  value={labelStyle.fontSize}
-                  onChange={(e) => setLabelStyle({ fontSize: Number(e.target.value) })}
-                  className="w-14 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                <span className="text-[10px] text-gray-400">px (0=auto)</span>
-              </div>
-            </div>
-            <ColorRow label="Label colour" value={labelStyle.color}
-              onChange={(v) => setLabelStyle({ color: v })} />
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Label position</p>
-              <div className="grid grid-cols-3 gap-1">
-                {([
-                  ['top-left',  'Top L'],
-                  ['center',    'Center'],
-                  ['top-right', 'Top R'],
-                ] as [LabelPosition, string][]).map(([pos, lbl]) => (
-                  <button key={pos} onClick={() => setLabelStyle({ position: pos })}
-                    className={`py-1 rounded border text-[10px] transition-colors ${
-                      labelStyle.position === pos
-                        ? 'bg-blue-100 border-blue-400 text-blue-700 font-medium'
-                        : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                    }`}>
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Office info */}
+          {/* Office info — already has its own collapse toggle */}
           <OfficeInfoEditor info={officeInfo} onChange={(k, v) => setOfficeInfo({ [k]: v })} />
 
-          <div className="p-3 border-t mt-auto space-y-2">
+          {/* Always-visible footer */}
+          <div className="px-3 py-2 border-t mt-auto shrink-0 space-y-1.5">
+            {/* Design / CAD view toggle */}
+            <div className="flex gap-1 p-0.5 bg-gray-100 rounded">
+              <button
+                onClick={() => setCadView(false)}
+                className={`flex-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  !cadView ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                Design
+              </button>
+              <button
+                onClick={() => setCadView(true)}
+                className={`flex-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  cadView ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                CAD
+              </button>
+            </div>
             <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
               <input type="checkbox" checked={showDepth}
                 onChange={(e) => setShowDepth(e.target.checked)} className="rounded" />
               Show 3D depth
             </label>
-            <div className="text-xs text-gray-400 text-center">
-              {isDirty ? '● Unsaved changes' : '✓ Saved'}
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={showBlockDimensions}
+                onChange={(e) => setShowBlockDimensions(e.target.checked)} className="rounded" />
+              Show block dimensions
+            </label>
+            <div className="text-[10px] text-center pt-0.5 space-y-0.5">
+              {saving || autoSaving ? (
+                <p className="text-blue-500 animate-pulse">↺ Saving…</p>
+              ) : isDirty ? (
+                <>
+                  <p className="text-amber-600">● Unsaved changes</p>
+                  {saveCountdown !== null && saveCountdown > 0 && (
+                    <p className="text-gray-400">Auto-save in {saveCountdown}s</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-green-600">
+                  ✓ Saved{lastSavedAt ? ` · ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                </p>
+              )}
             </div>
           </div>
         </aside>
 
         {/* ── Canvas ───────────────────────────────────────────── */}
-        <main className="flex-1 overflow-hidden">
+        <main
+          className="flex-1 overflow-hidden"
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }) }}
+        >
           <CanvasBoard
             ref={canvasBoardRef}
-            lockers={lockers} lockerBlocks={lockerBlocks} room={room}
+            lockers={lockers} lockerBlocks={lockerBlocks} textLabels={textLabels} shapes={shapes} room={room}
             selectedId={selectedId} selectedIds={selectedIds}
             labelStyle={labelStyle}
             onSelectItem={selectItem} onToggleSelectItem={toggleSelectItem} onSelectBatch={selectBatch}
@@ -626,8 +976,12 @@ function CanvasEditor() {
             selectedCellKey={selectedCell ? `${selectedCell.blockId}:${selectedCell.colIdx}:${selectedCell.cellIdx}` : undefined}
             selectedLocksetKey={selectedLockset ? `${selectedLockset.blockId}:${selectedLockset.locksetIdx}` : undefined}
             onUpdateLocker={updateLocker} onUpdateLockerBlock={updateLockerBlock}
+            onUpdateTextLabel={updateTextLabel} onAddTextLabel={addTextLabel}
+            onUpdateShape={updateShape} onAddShape={addShape}
             onBulkMove={bulkMove}
-            showDimensions={showDimensions} showDepth={showDepth} activeTool={activeTool} onZoomChange={setZoom}
+            showDimensions={showDimensions} showDepth={showDepth} showBlockDimensions={showBlockDimensions}
+            cadView={cadView}
+            activeTool={activeTool} onZoomChange={setZoom} onToolChange={setActiveTool}
           />
         </main>
 
@@ -714,18 +1068,55 @@ function CanvasEditor() {
                     </div>
                   </div>
                 )}
+                {selectedCellData.showLabel !== false && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-gray-500">Label position</span>
+                      {selectedCellData.labelPosition && (
+                        <button onClick={() => updateCell({ labelPosition: undefined as unknown as LabelPosition })}
+                          title="Use block default" className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
+                      )}
+                    </div>
+                    <PositionGrid
+                      value={selectedCellData.labelPosition}
+                      onChange={(p) => updateCell({ labelPosition: p as LabelPosition | undefined })}
+                    />
+                    {!selectedCellData.labelPosition && (
+                      <p className="text-[10px] text-gray-400 mt-0.5">Using block default</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* ── Dimension line ── */}
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Dimension</p>
-                <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer">
-                  <input type="checkbox"
-                    checked={selectedCellData.showDimension !== false}
-                    onChange={(e) => updateCell({ showDimension: e.target.checked })}
-                    className="rounded" />
-                  Show W×H
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Dimension</p>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer">
+                    <input type="checkbox"
+                      checked={selectedCellData.showDimension !== false}
+                      onChange={(e) => updateCell({ showDimension: e.target.checked })}
+                      className="rounded" />
+                    Show W×H
+                  </label>
+                </div>
+                {selectedCellData.showDimension !== false && (
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-1">Dim position</p>
+                    <div className="flex gap-1">
+                      {(['top', 'center', 'bottom'] as const).map((pos) => (
+                        <button key={pos} onClick={() => updateCell({ dimensionPosition: pos })}
+                          className={`flex-1 py-0.5 rounded border text-[10px] transition-colors ${
+                            (selectedCellData.dimensionPosition ?? 'bottom') === pos
+                              ? 'bg-blue-100 border-blue-400 text-blue-700'
+                              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                          }`}>
+                          {pos.charAt(0).toUpperCase() + pos.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ── Height ── */}
@@ -739,9 +1130,9 @@ function CanvasEditor() {
                   </label>
                 </div>
                 <div className="flex items-center gap-1">
-                  <input type="number" min={50} step={25}
+                  <NumericInput min={50}
                     value={selectedCellData.heightMm}
-                    onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 50) updateCell({ heightMm: v }) }}
+                    onCommit={(v) => updateCell({ heightMm: v })}
                     className="flex-1 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   <span className="text-[10px] text-gray-400">mm</span>
                 </div>
@@ -752,9 +1143,9 @@ function CanvasEditor() {
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Corner radius</p>
                 <div className="flex items-center gap-1">
-                  <input type="number" min={0} max={40} step={1}
+                  <NumericInput min={0} max={40}
                     value={selectedCellData.cornerRadius ?? selectedBlock.cellCornerRadius ?? 1}
-                    onChange={(e) => updateCell({ cornerRadius: Math.max(0, Number(e.target.value)) })}
+                    onCommit={(v) => updateCell({ cornerRadius: v })}
                     className="flex-1 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   <span className="text-[10px] text-gray-400">px</span>
                   {selectedCellData.cornerRadius != null && (
@@ -831,6 +1222,101 @@ function CanvasEditor() {
                 ))}
               </div>
 
+              {/* ── Size annotations (W / H dimension lines outside block) ── */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Size annotations</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Width line</span>
+                  <div className="flex items-center gap-1.5">
+                    <input type="checkbox"
+                      checked={selectedBlock.showWidthAnnotation === true}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, showWidthAnnotation: e.target.checked })}
+                      className="w-4 h-4 accent-blue-500 cursor-pointer" />
+                    {selectedBlock.showWidthAnnotation && (
+                      <select
+                        value={selectedBlock.widthAnnotationSide ?? 'bottom'}
+                        onChange={(e) => updateLockerBlock({ ...selectedBlock, widthAnnotationSide: e.target.value as 'top' | 'bottom' })}
+                        className="border rounded px-1 py-0.5 text-[10px] focus:outline-none">
+                        <option value="bottom">Bottom</option>
+                        <option value="top">Top</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Height line</span>
+                  <div className="flex items-center gap-1.5">
+                    <input type="checkbox"
+                      checked={selectedBlock.showHeightAnnotation === true}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, showHeightAnnotation: e.target.checked })}
+                      className="w-4 h-4 accent-blue-500 cursor-pointer" />
+                    {selectedBlock.showHeightAnnotation && (
+                      <select
+                        value={selectedBlock.heightAnnotationSide ?? 'left'}
+                        onChange={(e) => updateLockerBlock({ ...selectedBlock, heightAnnotationSide: e.target.value as 'left' | 'right' })}
+                        className="border rounded px-1 py-0.5 text-[10px] focus:outline-none">
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Depth label</span>
+                  <input type="checkbox"
+                    checked={selectedBlock.showDepthAnnotation === true}
+                    onChange={(e) => updateLockerBlock({ ...selectedBlock, showDepthAnnotation: e.target.checked })}
+                    className="w-4 h-4 accent-blue-500 cursor-pointer" />
+                </div>
+                {(selectedBlock.showWidthAnnotation || selectedBlock.showHeightAnnotation || selectedBlock.showDepthAnnotation) && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Font size (px)</span>
+                    <NumericInput min={6} max={24}
+                      value={selectedBlock.sizeAnnotationFontSize ?? 9}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, sizeAnnotationFontSize: v })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                )}
+              </div>
+
+              {/* ── Label style (block-level override of global) ── */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Label style</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Font size (px, 0=auto)</span>
+                  <NumericInput min={0} max={32}
+                    value={selectedBlock.labelStyle?.fontSize ?? labelStyle.fontSize}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, fontSize: v } })}
+                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Label colour</span>
+                  <div className="flex items-center gap-1.5">
+                    <input type="color"
+                      value={selectedBlock.labelStyle?.color ?? labelStyle.color}
+                      onChange={(e) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, color: e.target.value } })}
+                      className="w-6 h-6 rounded cursor-pointer border" />
+                    {selectedBlock.labelStyle?.color && (
+                      <button onClick={() => { const ls = { ...selectedBlock.labelStyle }; delete ls.color; updateLockerBlock({ ...selectedBlock, labelStyle: ls }) }}
+                        title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-500 text-xs">Label position</span>
+                    {selectedBlock.labelStyle?.position && (
+                      <button onClick={() => { const ls = { ...selectedBlock.labelStyle }; delete ls.position; updateLockerBlock({ ...selectedBlock, labelStyle: ls }) }}
+                        title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺ Reset</button>
+                    )}
+                  </div>
+                  <PositionGrid
+                    value={selectedBlock.labelStyle?.position}
+                    onChange={(p) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, position: p } })}
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Colours</p>
                 <ColorRow label="Door"    value={selectedBlock.color}
@@ -849,9 +1335,9 @@ function CanvasEditor() {
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Corner radius</p>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500 text-xs">All doors (px)</span>
-                  <input type="number" min={0} max={40} step={1}
+                  <NumericInput min={0} max={40}
                     value={selectedBlock.cellCornerRadius ?? 1}
-                    onChange={(e) => updateLockerBlock({ ...selectedBlock, cellCornerRadius: Math.max(0, Number(e.target.value)) })}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, cellCornerRadius: v })}
                     className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                 </div>
               </div>
@@ -860,16 +1346,16 @@ function CanvasEditor() {
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Border</p>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500 text-xs">Width (px)</span>
-                  <input type="number" min={0} max={12} step={1}
+                  <NumericInput min={0} max={12}
                     value={selectedBlock.borderWidth ?? 0}
-                    onChange={(e) => updateLockerBlock({ ...selectedBlock, borderWidth: Math.max(0, Number(e.target.value)) })}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, borderWidth: v })}
                     className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500 text-xs">Radius (px)</span>
-                  <input type="number" min={0} max={40} step={1}
+                  <NumericInput min={0} max={40}
                     value={selectedBlock.borderRadius ?? 0}
-                    onChange={(e) => updateLockerBlock({ ...selectedBlock, borderRadius: Math.max(0, Number(e.target.value)) })}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, borderRadius: v })}
                     className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                 </div>
                 <ColorRow label="Colour"
@@ -881,39 +1367,39 @@ function CanvasEditor() {
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Legs</p>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500 text-xs">Height (mm)</span>
-                  <input type="number" min={0} max={300} step={10}
+                  <NumericInput min={0} max={300}
                     value={selectedBlock.legsHeightMm ?? 0}
-                    onChange={(e) => updateLockerBlock({ ...selectedBlock, legsHeightMm: Math.max(0, Number(e.target.value)) })}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsHeightMm: v })}
                     className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                 </div>
                 {(selectedBlock.legsHeightMm ?? 0) > 0 && (<>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500 text-xs">Width (mm)</span>
-                    <input type="number" min={20} max={200} step={5}
+                    <NumericInput min={20} max={200}
                       value={selectedBlock.legsWidthMm ?? 50}
-                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsWidthMm: Math.max(20, Number(e.target.value)) })}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsWidthMm: v })}
                       className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500 text-xs">Depth (mm)</span>
-                    <input type="number" min={10} max={1000} step={10}
+                    <NumericInput min={10} max={1000}
                       value={selectedBlock.legsDepthMm ?? selectedBlock.config.depthMm}
-                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsDepthMm: Math.max(10, Number(e.target.value)) })}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsDepthMm: v })}
                       className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500 text-xs">Inset (mm)</span>
-                    <input type="number" min={0} max={500} step={5}
+                    <NumericInput min={0} max={500}
                       value={selectedBlock.legsInsetMm ?? Math.round(Math.min(selectedBlock.config.leftMarginMm, selectedBlock.config.rightMarginMm) / 2)}
-                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsInsetMm: Math.max(0, Number(e.target.value)) })}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsInsetMm: v })}
                       className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500 text-xs">Radius (px)</span>
-                    <input type="number" min={0} max={40} step={1}
+                    <NumericInput min={0} max={40}
                       value={selectedBlock.legsCornerRadius ?? 2}
-                      onChange={(e) => updateLockerBlock({ ...selectedBlock, legsCornerRadius: Math.max(0, Number(e.target.value)) })}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsCornerRadius: v })}
                       className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   </div>
                   <ColorRow label="Colour"
@@ -974,6 +1460,14 @@ function CanvasEditor() {
             <PropertiesPanel locker={selectedLocker} showDepth={showDepth} onChange={updateLocker} onDelete={deleteLocker} />
           )}
 
+          {!isMultiSelect && selectedType === 'textLabel' && selectedTextLabel && (
+            <TextLabelPanel label={selectedTextLabel} onChange={updateTextLabel} onDelete={deleteTextLabel} />
+          )}
+
+          {!isMultiSelect && selectedType === 'shape' && selectedShape && (
+            <ShapePanel shape={selectedShape} onChange={updateShape} onDelete={deleteShape} />
+          )}
+
           {!selectedId && !isMultiSelect && (
             <p className="p-4 text-xs text-gray-400">
               Select an item to edit its properties.<br />
@@ -990,6 +1484,21 @@ function CanvasEditor() {
           editBlock={editingBlock}
           onUpdate={(updated) => { updateLockerBlock(updated); setEditingBlock(null) }}
           onClose={() => setEditingBlock(null)}
+        />
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x} y={contextMenu.y}
+          hasSelection={selectedIds.length > 0}
+          hasClipboard={hasClipboard}
+          onClose={() => setContextMenu(null)}
+          onCopy={copySelected}
+          onPaste={paste}
+          onDuplicate={duplicate}
+          onDelete={deleteSelected}
+          onSelectAll={selectAll}
         />
       )}
     </div>

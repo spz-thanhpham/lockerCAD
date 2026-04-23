@@ -14,6 +14,7 @@ interface Props {
   isInMultiSelect: boolean
   labelStyle?: LabelStyle
   showDepth?: boolean
+  cadView?: boolean
   getStageTransform: () => { x: number; y: number; scaleX: number }
   onSelect: (addToSelection: boolean) => void
   onChange: (updated: LockerObject) => void
@@ -30,7 +31,7 @@ interface Props {
 const SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330]
 
 export default function LockerObjectComponent({
-  locker, scale, isSelected, isInMultiSelect, labelStyle, showDepth, getStageTransform, onSelect, onChange,
+  locker, scale, isSelected, isInMultiSelect, labelStyle, showDepth, cadView, getStageTransform, onSelect, onChange,
   onMultiDragMove, onMultiDragEnd,
   shiftHeld, roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
 }: Props) {
@@ -109,10 +110,10 @@ export default function LockerObjectComponent({
             <>
               <Line closed
                 points={[0, 0, wPx, 0, wPx + dx, dy, dx, dy]}
-                fill={darkenHex(base, 0.15)} stroke="#475569" strokeWidth={0.5} />
+                fill={cadView ? 'white' : darkenHex(base, 0.15)} stroke="#475569" strokeWidth={0.5} />
               <Line closed
                 points={[wPx, 0, wPx, hPx, wPx + dx, hPx + dy, wPx + dx, dy]}
-                fill={darkenHex(base, 0.30)} stroke="#475569" strokeWidth={0.5} />
+                fill={cadView ? '#f1f5f9' : darkenHex(base, 0.30)} stroke="#475569" strokeWidth={0.5} />
 
               {/* Depth dimension annotation — hidden on export when dims excluded */}
               <Group name="depth-dim">
@@ -136,8 +137,8 @@ export default function LockerObjectComponent({
             </>
           )
         })()}
-        <Rect width={wPx} height={hPx} fill={locker.color}
-          stroke={strokeColor} strokeWidth={strokeWidth} cornerRadius={2} />
+        <Rect width={wPx} height={hPx} fill={cadView ? 'white' : locker.color}
+          stroke={cadView ? '#1e293b' : strokeColor} strokeWidth={cadView ? 1 : strokeWidth} cornerRadius={2} />
         <Rect x={wPx / 2 - 0.5} y={4} width={1} height={hPx - 8} fill="#475569" opacity={0.3} />
         {locker.showLabel !== false && (
           <Text text={locker.label}

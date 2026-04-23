@@ -13,6 +13,9 @@ import {
   blockHeightMm,
   type LockerObject,
   type LockerBlock,
+  type TextLabel,
+  type ShapeObject,
+  type ShapeType,
   type RoomConfig,
   type CanvasData,
   type LabelStyle,
@@ -24,15 +27,26 @@ export type AlignmentType =
   | 'center-h' | 'center-v'
   | 'distribute-h' | 'distribute-v'
 
+type ClipboardItem =
+  | { type: 'locker';    data: LockerObject }
+  | { type: 'block';     data: LockerBlock  }
+  | { type: 'textLabel'; data: TextLabel    }
+  | { type: 'shape';     data: ShapeObject  }
+
 interface CanvasStore {
   // State
   lockers: LockerObject[]
   lockerBlocks: LockerBlock[]
+  textLabels: TextLabel[]
+  shapes: ShapeObject[]
   room: RoomConfig
   selectedId: string | null
-  selectedType: 'locker' | 'block' | null
+  selectedType: 'locker' | 'block' | 'textLabel' | 'shape' | null
   selectedIds: string[]
+  clipboard: ClipboardItem[]
+  clipboardOffset: number   // px offset added to each successive paste
   showDimensions: boolean
+  showBlockDimensions: boolean
   showDepth: boolean
   isDirty: boolean
   projectName: string
@@ -49,12 +63,28 @@ interface CanvasStore {
   updateLockerBlock: (updated: LockerBlock) => void
   deleteLockerBlock: (id: string) => void
 
+  // TextLabel actions
+  addTextLabel: (x: number, y: number) => void
+  updateTextLabel: (updated: TextLabel) => void
+  deleteTextLabel: (id: string) => void
+
+  // Shape actions
+  addShape: (type: ShapeType, x: number, y: number) => void
+  updateShape: (updated: ShapeObject) => void
+  deleteShape: (id: string) => void
+
+  // Clipboard / bulk delete
+  copySelected: () => void
+  paste: () => void
+  duplicate: () => void
+  deleteSelected: () => void
+
   // Selection
-  selectItem: (id: string | null, type: 'locker' | 'block' | null) => void
-  toggleSelectItem: (id: string, type: 'locker' | 'block') => void
+  selectItem: (id: string | null, type: 'locker' | 'block' | 'textLabel' | 'shape' | null) => void
+  toggleSelectItem: (id: string, type: 'locker' | 'block' | 'textLabel' | 'shape') => void
   selectAll: () => void
   clearSelection: () => void
-  selectBatch: (items: { id: string; type: 'locker' | 'block' }[]) => void
+  selectBatch: (items: { id: string; type: 'locker' | 'block' | 'shape' }[]) => void
   bulkMove: (dx: number, dy: number) => void
 
   // Alignment (operates on selectedIds)
@@ -63,6 +93,7 @@ interface CanvasStore {
   // Canvas / room
   setRoom: (room: Partial<RoomConfig>) => void
   setShowDimensions: (show: boolean) => void
+  setShowBlockDimensions: (show: boolean) => void
   setShowDepth: (show: boolean) => void
   setProjectName: (name: string) => void
   setLabelStyle: (style: Partial<LabelStyle>) => void
@@ -76,11 +107,16 @@ interface CanvasStore {
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
   lockers: [],
   lockerBlocks: [],
+  textLabels: [],
+  shapes: [],
   room: DEFAULT_ROOM_CONFIG,
+  clipboard: [],
+  clipboardOffset: 20,
   selectedId: null,
   selectedType: null,
   selectedIds: [],
   showDimensions: true,
+  showBlockDimensions: true,
   showDepth: false,
   isDirty: false,
   projectName: 'New Layout',
@@ -147,6 +183,155 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       isDirty: true,
     })),
 
+  // ── TextLabel ────────────────────────────────────────────────
+  addTextLabel: (x, y) => {
+    const newLabel: TextLabel = {
+      id: nanoid(),
+      x, y,
+      text: 'Text',
+      fontSize: 14,
+      fontStyle: 'normal',
+      color: '#1e293b',
+      rotation: 0,
+    }
+    set((s) => ({
+      textLabels: [...s.textLabels, newLabel],
+      selectedId: newLabel.id,
+      selectedType: 'textLabel',
+      selectedIds: [newLabel.id],
+      isDirty: true,
+    }))
+  },
+
+  updateTextLabel: (updated) =>
+    set((s) => ({
+      textLabels: s.textLabels.map((t) => (t.id === updated.id ? updated : t)),
+      isDirty: true,
+    })),
+
+  deleteTextLabel: (id) =>
+    set((s) => ({
+      textLabels: s.textLabels.filter((t) => t.id !== id),
+      selectedId: s.selectedId === id ? null : s.selectedId,
+      selectedType: s.selectedId === id ? null : s.selectedType,
+      selectedIds: s.selectedIds.filter((i) => i !== id),
+      isDirty: true,
+    })),
+
+  // ── ShapeObject ──────────────────────────────────────────────
+  addShape: (type, x, y) => {
+    const newShape: ShapeObject = {
+      id: nanoid(),
+      type,
+      x,
+      y,
+      width:  type === 'rect' ? 120 : 80,
+      height: type === 'rect' ?  80 : 80,
+      fill: 'rgba(59,130,246,0.15)',
+      stroke: '#3b82f6',
+      strokeWidth: 1.5,
+      opacity: 1,
+      rotation: 0,
+      cornerRadius: 0,
+    }
+    set((s) => ({
+      shapes: [...s.shapes, newShape],
+      selectedId: newShape.id,
+      selectedType: 'shape',
+      selectedIds: [newShape.id],
+      isDirty: true,
+    }))
+  },
+
+  updateShape: (updated) =>
+    set((s) => ({
+      shapes: s.shapes.map((sh) => (sh.id === updated.id ? updated : sh)),
+      isDirty: true,
+    })),
+
+  deleteShape: (id) =>
+    set((s) => ({
+      shapes: s.shapes.filter((sh) => sh.id !== id),
+      selectedId: s.selectedId === id ? null : s.selectedId,
+      selectedType: s.selectedId === id ? null : s.selectedType,
+      selectedIds: s.selectedIds.filter((i) => i !== id),
+      isDirty: true,
+    })),
+
+  // ── Clipboard ────────────────────────────────────────────────
+  copySelected: () => {
+    const { lockers, lockerBlocks, textLabels, shapes, selectedIds } = get()
+    const items: ClipboardItem[] = []
+    for (const id of selectedIds) {
+      const lo = lockers.find((l) => l.id === id)
+      if (lo) { items.push({ type: 'locker', data: lo }); continue }
+      const bl = lockerBlocks.find((b) => b.id === id)
+      if (bl) { items.push({ type: 'block', data: bl }); continue }
+      const tl = textLabels.find((t) => t.id === id)
+      if (tl) { items.push({ type: 'textLabel', data: tl }); continue }
+      const sh = shapes.find((s) => s.id === id)
+      if (sh) { items.push({ type: 'shape', data: sh }) }
+    }
+    if (items.length > 0) set({ clipboard: items, clipboardOffset: 20 })
+  },
+
+  paste: () => {
+    const { clipboard, clipboardOffset } = get()
+    if (clipboard.length === 0) return
+    const off = clipboardOffset
+    const newIds: string[] = []
+    set((s) => {
+      const newLockers     = [...s.lockers]
+      const newBlocks      = [...s.lockerBlocks]
+      const newTextLabels  = [...s.textLabels]
+      const newShapes      = [...s.shapes]
+      for (const item of clipboard) {
+        const id = nanoid()
+        newIds.push(id)
+        if (item.type === 'locker')
+          newLockers.push({ ...item.data, id, x: item.data.x + off, y: item.data.y + off })
+        else if (item.type === 'block')
+          newBlocks.push({ ...item.data, id, x: item.data.x + off, y: item.data.y + off })
+        else if (item.type === 'textLabel')
+          newTextLabels.push({ ...item.data, id, x: item.data.x + off, y: item.data.y + off })
+        else
+          newShapes.push({ ...item.data, id, x: item.data.x + off, y: item.data.y + off })
+      }
+      const firstType = clipboard[0]?.type === 'locker' ? 'locker'
+        : clipboard[0]?.type === 'block' ? 'block'
+        : clipboard[0]?.type === 'textLabel' ? 'textLabel'
+        : 'shape'
+      return {
+        lockers: newLockers, lockerBlocks: newBlocks,
+        textLabels: newTextLabels, shapes: newShapes,
+        selectedIds: newIds, selectedId: newIds[0] ?? null,
+        selectedType: newIds.length > 0 ? firstType : null,
+        clipboardOffset: off + 20,
+        isDirty: true,
+      }
+    })
+  },
+
+  duplicate: () => {
+    // Copy current selection then immediately paste
+    get().copySelected()
+    // clipboardOffset was just reset to 20 by copySelected; paste will use it
+    get().paste()
+  },
+
+  deleteSelected: () => {
+    const { selectedIds } = get()
+    if (selectedIds.length === 0) return
+    set((s) => ({
+      lockers:      s.lockers.filter((l)  => !s.selectedIds.includes(l.id)),
+      lockerBlocks: s.lockerBlocks.filter((b) => !s.selectedIds.includes(b.id)),
+      textLabels:   s.textLabels.filter((t)  => !s.selectedIds.includes(t.id)),
+      shapes:       s.shapes.filter((sh) => !s.selectedIds.includes(sh.id)),
+      selectedId: null, selectedType: null, selectedIds: [],
+      isDirty: true,
+    }))
+  },
+
   // ── Selection ────────────────────────────────────────────────
   selectItem: (id, type) =>
     set({ selectedId: id, selectedType: type, selectedIds: id ? [id] : [] }),
@@ -164,15 +349,20 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   selectAll: () =>
     set((s) => {
-      const allIds = [...s.lockers.map((l) => l.id), ...s.lockerBlocks.map((b) => b.id)]
+      const allIds = [
+        ...s.lockers.map((l) => l.id),
+        ...s.lockerBlocks.map((b) => b.id),
+        ...s.textLabels.map((t) => t.id),
+        ...s.shapes.map((sh) => sh.id),
+      ]
       const first = allIds[0] ?? null
-      return {
-        selectedIds: allIds,
-        selectedId: first,
-        selectedType: first
-          ? (s.lockers.find((l) => l.id === first) ? 'locker' : 'block')
-          : null,
-      }
+      const firstType = first
+        ? s.lockers.find((l) => l.id === first) ? 'locker'
+          : s.lockerBlocks.find((b) => b.id === first) ? 'block'
+          : s.textLabels.find((t) => t.id === first) ? 'textLabel'
+          : 'shape'
+        : null
+      return { selectedIds: allIds, selectedId: first, selectedType: firstType }
     }),
 
   clearSelection: () => set({ selectedId: null, selectedType: null, selectedIds: [] }),
@@ -193,6 +383,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ),
       lockerBlocks: s.lockerBlocks.map((b) =>
         s.selectedIds.includes(b.id) ? { ...b, x: b.x + dx, y: b.y + dy } : b
+      ),
+      textLabels: s.textLabels.map((t) =>
+        s.selectedIds.includes(t.id) ? { ...t, x: t.x + dx, y: t.y + dy } : t
+      ),
+      shapes: s.shapes.map((sh) =>
+        s.selectedIds.includes(sh.id) ? { ...sh, x: sh.x + dx, y: sh.y + dy } : sh
       ),
       isDirty: true,
     })),
@@ -258,6 +454,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set((s) => ({ room: { ...s.room, ...room }, isDirty: true })),
 
   setShowDimensions: (show) => set({ showDimensions: show }),
+  setShowBlockDimensions: (show) => set({ showBlockDimensions: show }),
   setShowDepth: (show) => set({ showDepth: show }),
 
   setProjectName: (name) => set({ projectName: name, isDirty: true }),
@@ -272,6 +469,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set({
       lockers: data.lockers ?? [],
       lockerBlocks: data.lockerBlocks ?? [],
+      textLabels: data.textLabels ?? [],
+      shapes: data.shapes ?? [],
       room: data.room,
       labelStyle: data.labelStyle ?? DEFAULT_LABEL_STYLE,
       officeInfo: data.officeInfo ?? DEFAULT_OFFICE_INFO,
@@ -282,8 +481,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }),
 
   getCanvasData: (): CanvasData => {
-    const { lockers, lockerBlocks, room, labelStyle, officeInfo } = get()
-    return { lockers, lockerBlocks, room, labelStyle, officeInfo, version: 1 }
+    const { lockers, lockerBlocks, textLabels, shapes, room, labelStyle, officeInfo } = get()
+    return { lockers, lockerBlocks, textLabels, shapes, room, labelStyle, officeInfo, version: 1 }
   },
 
   markSaved: () => set({ isDirty: false }),
@@ -291,6 +490,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   resetCanvas: () => set({
     lockers: [],
     lockerBlocks: [],
+    textLabels: [],
+    shapes: [],
     room: DEFAULT_ROOM_CONFIG,
     selectedId: null,
     selectedType: null,

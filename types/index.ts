@@ -35,9 +35,11 @@ export interface LockerCell {
   heightMm: number       // compartment height (door + surrounding gap)
   label?: string         // e.g. "L01" — auto-assigned if omitted
   color?: string         // override block door color
-  showLabel?: boolean    // false hides the label text; default true
+  showLabel?: boolean    // true/false overrides block; undefined = follow block
   labelColor?: string    // per-cell label color override
-  showDimension?: boolean // false hides the WxH dimension text; default true
+  labelPosition?: LabelPosition  // overrides block-level position; undefined = follow block
+  showDimension?: boolean        // true/false overrides block; undefined = follow block
+  dimensionPosition?: 'top' | 'center' | 'bottom'  // where the W×H text sits; default bottom
   cornerRadius?: number  // door corner radius in px; overrides block default
 }
 
@@ -81,10 +83,17 @@ export interface LockerBlock {
   borderRadius?: number  // outer block border corner radius in px
   cellCornerRadius?: number // default door corner radius for all cells in this block
   locksets?: Array<{ color?: string }> // per-tray color overrides; index matches lockset channel order
+  labelStyle?: Partial<LabelStyle>  // per-block override; falls back to global LabelStyle
   showBlockLabel?: boolean      // show/hide the block name label; default true
   showCellLabels?: boolean      // show/hide all cell label texts; default true
   showCellDimensions?: boolean  // show/hide all cell W×H dimension texts; default true
   showDepthLabel?: boolean      // show/hide the depth annotation arrow+text; default true
+  showWidthAnnotation?: boolean      // CAD-style overall width dimension line; default false
+  showHeightAnnotation?: boolean     // CAD-style overall height dimension line; default false
+  showDepthAnnotation?: boolean      // shows depth value as text label near block; default false
+  widthAnnotationSide?: 'top' | 'bottom'   // which side the width line appears; default 'bottom'
+  heightAnnotationSide?: 'left' | 'right'  // which side the height line appears; default 'left'
+  sizeAnnotationFontSize?: number    // 0 = auto (9px)
   legsHeightMm?: number      // 0 or undefined = no legs
   legsWidthMm?: number       // leg foot width in mm (default 50)
   legsDepthMm?: number       // leg depth in mm for 3D projection (defaults to cfg.depthMm)
@@ -103,7 +112,12 @@ export interface RoomConfig {
 }
 
 // ─── Label style ─────────────────────────────────────────────────
-export type LabelPosition = 'top-left' | 'top-right' | 'center'
+// 9-position grid (top/mid/bot × left/center/right).
+// 'center' kept as the original center-middle value for back-compat.
+export type LabelPosition =
+  | 'top-left'  | 'top-center'  | 'top-right'
+  | 'mid-left'  | 'center'      | 'mid-right'
+  | 'bot-left'  | 'bot-center'  | 'bot-right'
 
 export interface LabelStyle {
   fontSize: number        // 0 = auto-size per element; >0 = fixed px override
@@ -132,10 +146,45 @@ export const DEFAULT_OFFICE_INFO: OfficeInfo = {
   hotline: '',
 }
 
+// ─── Simple annotation shapes ─────────────────────────────────────
+export type ShapeType = 'rect' | 'circle'
+
+export interface ShapeObject {
+  id: string
+  type: ShapeType
+  // rect: top-left corner; circle: centre (Konva native)
+  x: number
+  y: number
+  width: number      // px — for circle this is the horizontal diameter
+  height: number     // px — for circle this is the vertical diameter
+  fill: string
+  stroke: string
+  strokeWidth: number
+  opacity: number    // 0–1
+  rotation: number
+  cornerRadius?: number  // rect only
+  locked?: boolean
+}
+
+// ─── Text annotation ─────────────────────────────────────────────
+export interface TextLabel {
+  id: string
+  x: number
+  y: number
+  text: string
+  fontSize: number
+  fontStyle: 'normal' | 'bold' | 'italic'
+  color: string
+  rotation: number
+  locked?: boolean
+}
+
 export interface CanvasData {
   room: RoomConfig
   lockers: LockerObject[]
   lockerBlocks: LockerBlock[]
+  textLabels?: TextLabel[]
+  shapes?: ShapeObject[]
   labelStyle?: LabelStyle
   officeInfo?: OfficeInfo
   version: number

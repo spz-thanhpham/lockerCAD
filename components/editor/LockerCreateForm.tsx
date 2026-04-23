@@ -5,6 +5,7 @@
 // Use key={block.id} on the parent to remount when switching edit targets.
 
 import { useState, useCallback, useMemo } from 'react'
+import NumericInput from './NumericInput'
 import { nanoid } from 'nanoid'
 import {
   DEFAULT_BLOCK_CONFIG,
@@ -39,12 +40,14 @@ function NumInput({
       <label className="block text-xs font-medium text-gray-600 mb-0.5">{label}</label>
       {sublabel && <p className="text-xs text-gray-400 mb-1">{sublabel}</p>}
       <div className="flex items-center gap-1">
-        <input type="number" min={min} value={value} readOnly={readOnly}
-          onChange={readOnly ? undefined : (e) => onChange!(Math.max(min, Number(e.target.value)))}
-          className={`w-24 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            readOnly ? 'bg-gray-50 text-gray-400 cursor-default' : ''
-          }`}
-        />
+        {readOnly ? (
+          <input type="text" value={value} readOnly
+            className="w-24 border rounded px-2 py-1 text-sm bg-gray-50 text-gray-400 cursor-default" />
+        ) : (
+          <NumericInput min={min} value={value}
+            onCommit={(v) => onChange!(v)}
+            className="w-24 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        )}
         <span className="text-xs text-gray-400">{unit}</span>
       </div>
     </div>
@@ -306,9 +309,9 @@ export default function LockerCreateForm({ onAdd, editBlock, onUpdate, onClose }
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
                         <label className="text-xs text-gray-500">Width (px)</label>
-                        <input type="number" min={0} max={12} step={1}
+                        <NumericInput min={0} max={12}
                           value={borderWidth}
-                          onChange={(e) => setBorderWidth(Math.max(0, Math.min(12, Number(e.target.value))))}
+                          onCommit={(v) => setBorderWidth(v)}
                           className="w-16 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <div className="flex items-center gap-2">

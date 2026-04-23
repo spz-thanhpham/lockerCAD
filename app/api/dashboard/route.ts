@@ -14,25 +14,32 @@ export async function GET() {
 
   const userId = (session.user as any).id as string
 
-  // Fire all queries in parallel; sharePermission may not exist yet — fail gracefully
+  // Fire all queries in parallel; sharePermission table may not exist yet — fail gracefully.
+  // The async IIFE ensures a synchronous TypeError (undefined?.findMany) is also caught.
   const [projects, sharedShares] = await Promise.all([
     prisma.project.findMany({
       where: { ownerId: userId },
       orderBy: { createdAt: 'asc' },
       include: { _count: { select: { layouts: true } } },
     }),
-    (prisma as any).sharePermission.findMany({
-      where: { userId, projectId: { not: null } },
-      include: {
-        project: {
+    (async () => {
+      try {
+        return await (prisma as any).sharePermission?.findMany({
+          where: { userId, projectId: { not: null } },
           include: {
-            owner: { select: { id: true, name: true, email: true } },
-            _count: { select: { layouts: true } },
+            project: {
+              include: {
+                owner: { select: { id: true, name: true, email: true } },
+                _count: { select: { layouts: true } },
+              },
+            },
           },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    }).catch(() => []),
+          orderBy: { createdAt: 'asc' },
+        }) ?? []
+      } catch {
+        return []
+      }
+    })(),
   ])
 
   const firstProjectId = projects[0]?.id ?? null
