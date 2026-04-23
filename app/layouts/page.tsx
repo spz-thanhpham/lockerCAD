@@ -332,10 +332,13 @@ export default function LayoutsPage() {
     setLoadingLayouts(true)
     try {
       const res = await fetch(`/api/layouts?projectId=${projectId}`)
+      if (!res.ok) throw new Error(`${res.status}`)
       const data = await res.json()
       setLayouts(Array.isArray(data) ? data : [])
-    } catch {
+      setError(null)
+    } catch (err) {
       setLayouts([])
+      setError(`Failed to load layouts (${err instanceof Error ? err.message : 'network error'})`)
     } finally {
       setLoadingLayouts(false)
     }

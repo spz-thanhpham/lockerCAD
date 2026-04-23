@@ -7,9 +7,11 @@ import type Konva from 'konva'
 import { mmToPx } from '@/lib/canvas-helpers'
 import { registerCapture } from '@/lib/canvas-capture'
 import { registerZoom, isZoomLocked } from '@/lib/canvas-zoom'
-import { DEFAULT_LABEL_STYLE, blockWidthMm, blockHeightMm, type LockerObject, type LockerBlock, type RoomConfig, type LabelStyle } from '@/types'
+import { DEFAULT_LABEL_STYLE, blockWidthMm, blockHeightMm, type LockerObject, type LockerBlock, type TextLabel, type ShapeObject, type ShapeType, type RoomConfig, type LabelStyle } from '@/types'
 import LockerObjectComponent from './LockerObject'
 import LockerBlockObjectComponent from './LockerBlockObject'
+import TextLabelObject from './TextLabelObject'
+import ShapeObjectComponent from './ShapeObject'
 import RoomOutline from './RoomOutline'
 import DimensionLine from './DimensionLine'
 
@@ -32,15 +34,19 @@ export interface CanvasBoardHandle {
   fitToRoom: () => void
 }
 
+type ActiveTool = 'select' | 'pan' | 'text' | 'rect' | 'circle'
+
 interface CanvasBoardProps {
   lockers: LockerObject[]
   lockerBlocks: LockerBlock[]
+  textLabels: TextLabel[]
+  shapes: ShapeObject[]
   room: RoomConfig
   selectedId: string | null
   selectedIds: string[]
   labelStyle?: LabelStyle
-  onSelectItem: (id: string | null, type: 'locker' | 'block' | null) => void
-  onToggleSelectItem: (id: string, type: 'locker' | 'block') => void
+  onSelectItem: (id: string | null, type: 'locker' | 'block' | 'textLabel' | 'shape' | null) => void
+  onToggleSelectItem: (id: string, type: 'locker' | 'block' | 'textLabel' | 'shape') => void
   onSelectBatch: (items: { id: string; type: 'locker' | 'block' }[]) => void
   onSelectCell: (blockId: string, colIdx: number, cellIdx: number) => void
   onSelectLockset: (blockId: string, locksetIdx: number) => void
@@ -48,22 +54,31 @@ interface CanvasBoardProps {
   selectedLocksetKey?: string   // "blockId:locksetIdx"
   onUpdateLocker: (updated: LockerObject) => void
   onUpdateLockerBlock: (updated: LockerBlock) => void
+  onUpdateTextLabel: (updated: TextLabel) => void
+  onAddTextLabel: (x: number, y: number) => void
+  onUpdateShape: (updated: ShapeObject) => void
+  onAddShape: (type: ShapeType, x: number, y: number) => void
   onBulkMove?: (dx: number, dy: number) => void
   showDimensions: boolean
+  showBlockDimensions?: boolean
   showDepth?: boolean
-  activeTool?: 'select' | 'pan'
+  cadView?: boolean
+  activeTool?: ActiveTool
   onZoomChange?: (zoom: number) => void
+  onToolChange?: (tool: ActiveTool) => void
 }
 
 const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function CanvasBoard(
   {
-    lockers, lockerBlocks, room,
+    lockers, lockerBlocks, textLabels, shapes, room,
     selectedId, selectedIds,
     labelStyle = DEFAULT_LABEL_STYLE,
     onSelectItem, onToggleSelectItem, onSelectBatch, onSelectCell, onSelectLockset,
     selectedCellKey, selectedLocksetKey,
-    onUpdateLocker, onUpdateLockerBlock, onBulkMove,
-    showDimensions, showDepth = false, activeTool = 'select', onZoomChange,
+    onUpdateLocker, onUpdateLockerBlock, onUpdateTextLabel, onAddTextLabel,
+    onUpdateShape, onAddShape,
+    onBulkMove,
+    showDimensions, showBlockDimensions = true, showDepth = false, cadView = false, activeTool = 'select', onZoomChange, onToolChange,
   },
   ref
 ) {
@@ -314,11 +329,21 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
 
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (activeTool === 'text') {
+        const pos = stageRef.current?.getRelativePointerPosition()
+        if (pos) { onAddTextLabel(pos.x, pos.y); onToolChange?.('select') }
+        return
+      }
+      if (activeTool === 'rect' || activeTool === 'circle') {
+        const pos = stageRef.current?.getRelativePointerPosition()
+        if (pos) { onAddShape(activeTool, pos.x, pos.y); onToolChange?.('select') }
+        return
+      }
       // After a drag-select, suppress the click-deselect
       if (wasDragSelect.current) { wasDragSelect.current = false; return }
       if (!isOnObject(e.target)) onSelectItem(null, null)
     },
-    [onSelectItem]
+    [activeTool, onAddTextLabel, onAddShape, onToolChange, onSelectItem]
   )
 
   const handleWheel = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -347,7 +372,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
         onMouseUp={handleStageMouseUp}
         onWheel={handleWheel}
         draggable={activeTool === 'pan'}
-        style={{ cursor: selBox ? 'crosshair' : undefined }}
+        style={{ cursor: activeTool === 'text' ? 'text' : activeTool === 'rect' || activeTool === 'circle' ? 'crosshair' : selBox ? 'crosshair' : undefined }}
       >
         <Layer>
           {/* White background so PNG export has a clean base */}
@@ -382,6 +407,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
                 isInMultiSelect={selectedIds.includes(block.id)}
                 labelStyle={labelStyle}
                 showDepth={showDepth}
+                cadView={cadView}
                 getStageTransform={getStageTransform}
                 onSelect={(add) =>
                   add ? onToggleSelectItem(block.id, 'block') : onSelectItem(block.id, 'block')
@@ -391,6 +417,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
                 selectedCellKey={blockCellKey}
                 selectedLocksetIdx={blockLocksetIdx}
                 onChange={onUpdateLockerBlock}
+                showBlockDimensions={showBlockDimensions}
                 onMultiDragMove={isMultiMember ? (dx, dy) => setDragDelta({ sourceId: block.id, dx, dy }) : undefined}
                 onMultiDragEnd={isMultiMember ? (dx, dy) => { setDragDelta(null); onBulkMove?.(dx, dy) } : undefined}
                 roomX={CANVAS_PADDING} roomY={CANVAS_PADDING}
@@ -416,6 +443,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
                 isInMultiSelect={selectedIds.includes(locker.id)}
                 labelStyle={labelStyle}
                 showDepth={showDepth}
+                cadView={cadView}
                 getStageTransform={getStageTransform}
                 onSelect={(add) =>
                   add ? onToggleSelectItem(locker.id, 'locker') : onSelectItem(locker.id, 'locker')
@@ -430,6 +458,31 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
               />
             )
           })}
+
+          {textLabels.map((tl) => (
+            <TextLabelObject
+              key={tl.id}
+              label={tl}
+              scale={room.scale}
+              isSelected={tl.id === selectedId}
+              onChange={onUpdateTextLabel}
+              onSelect={() => onSelectItem(tl.id, 'textLabel')}
+              roomX={CANVAS_PADDING} roomY={CANVAS_PADDING}
+              roomWidthPx={roomWidthPx} roomHeightPx={roomHeightPx}
+            />
+          ))}
+
+          {shapes.map((sh) => (
+            <ShapeObjectComponent
+              key={sh.id}
+              shape={sh}
+              isSelected={sh.id === selectedId}
+              onChange={onUpdateShape}
+              onSelect={() => onSelectItem(sh.id, 'shape')}
+              roomX={CANVAS_PADDING} roomY={CANVAS_PADDING}
+              roomWidthPx={roomWidthPx} roomHeightPx={roomHeightPx}
+            />
+          ))}
 
           {/* Drag-select rectangle */}
           {selBox && selBox.w > 1 && selBox.h > 1 && (

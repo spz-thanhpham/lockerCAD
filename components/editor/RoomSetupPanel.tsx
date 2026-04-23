@@ -3,6 +3,7 @@
 // Input panel to set room dimensions and canvas scale
 
 import type { RoomConfig } from '@/types'
+import NumericInput from './NumericInput'
 
 interface Props {
   room: RoomConfig
@@ -24,24 +25,20 @@ export default function RoomSetupPanel({ room, onChange }: Props) {
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Width (mm)</label>
-          <input
-            type="number"
+          <NumericInput
             className="w-full border rounded px-2 py-1 text-xs"
             value={room.widthMm}
             min={500}
-            step={100}
-            onChange={(e) => onChange({ widthMm: parseInt(e.target.value, 10) })}
+            onCommit={(v) => onChange({ widthMm: v })}
           />
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Depth (mm)</label>
-          <input
-            type="number"
+          <NumericInput
             className="w-full border rounded px-2 py-1 text-xs"
             value={room.depthMm}
             min={500}
-            step={100}
-            onChange={(e) => onChange({ depthMm: parseInt(e.target.value, 10) })}
+            onCommit={(v) => onChange({ depthMm: v })}
           />
         </div>
       </div>

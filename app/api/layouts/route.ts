@@ -19,25 +19,32 @@ export async function GET(req: NextRequest) {
 
   if (view === 'shared') {
     // Layout-level shares (not project-level)
-    const shares = await (prisma as any).sharePermission.findMany({
-      where: { userId, layoutId: { not: null } },
-      include: {
-        layout: {
-          select: {
-            id: true, name: true, projectId: true,
-            roomWidth: true, roomDepth: true,
-            createdAt: true, updatedAt: true,
-            project: {
+    // Async IIFE guards against synchronous TypeError when sharePermission table doesn't exist yet
+    const shares: any[] = await (async () => {
+      try {
+        return await (prisma as any).sharePermission?.findMany({
+          where: { userId, layoutId: { not: null } },
+          include: {
+            layout: {
               select: {
-                id: true, name: true,
-                owner: { select: { id: true, name: true, email: true } },
+                id: true, name: true, projectId: true,
+                roomWidth: true, roomDepth: true,
+                createdAt: true, updatedAt: true,
+                project: {
+                  select: {
+                    id: true, name: true,
+                    owner: { select: { id: true, name: true, email: true } },
+                  },
+                },
               },
             },
           },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    })
+          orderBy: { createdAt: 'asc' },
+        }) ?? []
+      } catch {
+        return []
+      }
+    })()
 
     const result = shares
       .filter((s: any) => s.layout !== null)
@@ -51,8 +58,8 @@ export async function GET(req: NextRequest) {
   }
 
   if (projectId) {
-    // Check access and fetch layouts in parallel
-    const [layouts, hasAccess] = await Promise.all([
+    // Check ownership first; if not owner, try share permission (table may not exist yet)
+    const [layouts, isOwner] = await Promise.all([
       prisma.layout.findMany({
         where: { projectId },
         orderBy: { updatedAt: 'desc' },
@@ -63,17 +70,24 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.project.findFirst({
-        where: {
-          id: projectId,
-          OR: [
-            { ownerId: userId },
-            { shares: { some: { userId } } } as any,
-          ],
-        },
+        where: { id: projectId, ownerId: userId },
         select: { id: true },
       }),
     ])
-    if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    if (!isOwner) {
+      // Fall back: check share permission — guarded in case table doesn't exist yet
+      const hasShare = await (async () => {
+        try {
+          return !!(await (prisma as any).sharePermission?.findFirst({
+            where: { userId, projectId },
+            select: { id: true },
+          }))
+        } catch { return false }
+      })()
+      if (!hasShare) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     return NextResponse.json(layouts)
   }
 

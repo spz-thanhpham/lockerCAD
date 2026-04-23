@@ -17,18 +17,22 @@ export async function GET(req: NextRequest) {
   const view = req.nextUrl.searchParams.get('view')
 
   if (view === 'shared') {
-    const shares = await (prisma as any).sharePermission.findMany({
-      where: { userId, projectId: { not: null } },
-      include: {
-        project: {
+    const shares: any[] = await (async () => {
+      try {
+        return await (prisma as any).sharePermission?.findMany({
+          where: { userId, projectId: { not: null } },
           include: {
-            owner: { select: { id: true, name: true, email: true } },
-            _count: { select: { layouts: true } },
+            project: {
+              include: {
+                owner: { select: { id: true, name: true, email: true } },
+                _count: { select: { layouts: true } },
+              },
+            },
           },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    })
+          orderBy: { createdAt: 'asc' },
+        }) ?? []
+      } catch { return [] }
+    })()
 
     const result = shares
       .filter((s: any) => s.project !== null)

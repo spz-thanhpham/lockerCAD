@@ -3,6 +3,7 @@
 // Right sidebar — edit selected LockerObject properties
 
 import type { LockerObject } from '@/types'
+import NumericInput from './NumericInput'
 
 interface Props {
   locker: LockerObject | null
@@ -61,15 +62,10 @@ export default function PropertiesPanel({ locker, showDepth, onChange, onDelete 
         ] as [keyof LockerObject, string][]).map(([key, label]) => (
           <div key={key} className="flex items-center justify-between gap-2">
             <span className="text-gray-500 w-12 shrink-0">{label}</span>
-            <input
-              type="number"
+            <NumericInput
               min={50}
-              step={50}
               value={locker[key] as number}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10)
-                if (!isNaN(v) && v >= 50) update(key, v)
-              }}
+              onCommit={(v) => update(key, v)}
               className="flex-1 border rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
             <span className="text-gray-400 text-[10px] w-6 shrink-0">mm</span>

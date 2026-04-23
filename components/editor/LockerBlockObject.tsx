@@ -19,6 +19,7 @@ interface Props {
   isInMultiSelect: boolean
   labelStyle?: LabelStyle
   showDepth?: boolean
+  cadView?: boolean
   getStageTransform: () => { x: number; y: number; scaleX: number }
   onSelect: (addToSelection: boolean) => void
   onSelectCell: (blockId: string, colIdx: number, cellIdx: number) => void
@@ -29,6 +30,7 @@ interface Props {
   onMultiDragMove?: (dx: number, dy: number) => void
   onMultiDragEnd?: (dx: number, dy: number) => void
   shiftHeld?: boolean
+  showBlockDimensions?: boolean
   roomX: number
   roomY: number
   roomWidthPx: number
@@ -36,10 +38,30 @@ interface Props {
   gridSizeMm: number
 }
 
-function cellLabelProps(pos: LabelPosition, li: number, cellY: number, doorW: number, doorH: number) {
-  if (pos === 'top-left')  return { x: li + 4,  y: cellY + 4, width: doorW - 8,  align: 'left'   as const }
-  if (pos === 'top-right') return { x: li,       y: cellY + 4, width: doorW - 4,  align: 'right'  as const }
-  return                          { x: li,       y: cellY + doorH / 2 - 8, width: doorW, align: 'center' as const }
+function cellLabelProps(pos: LabelPosition, li: number, cellY: number, doorW: number, doorH: number, fs: number) {
+  const PAD = 4
+  const isLeft  = pos === 'top-left'  || pos === 'mid-left'  || pos === 'bot-left'
+  const isCenterH = pos === 'top-center' || pos === 'center'   || pos === 'bot-center'
+  const isRight = pos === 'top-right' || pos === 'mid-right' || pos === 'bot-right'
+  const isTop   = pos === 'top-left'  || pos === 'top-center' || pos === 'top-right'
+  const isMid   = pos === 'mid-left'  || pos === 'center'    || pos === 'mid-right'
+  const isBot   = pos === 'bot-left'  || pos === 'bot-center' || pos === 'bot-right'
+
+  const x     = li + (isLeft ? PAD : 0)
+  const width = doorW - (isLeft || isRight ? PAD : 0)
+  const align = isLeft ? 'left' as const : isCenterH ? 'center' as const : 'right' as const
+  const y     = isTop ? cellY + PAD
+              : isMid ? cellY + doorH / 2 - fs / 2
+              : isBot ? cellY + doorH - fs - PAD
+              : cellY + doorH / 2 - fs / 2  // fallback center
+
+  return { x, y, width, align }
+}
+
+function dimTextY(pos: 'top' | 'center' | 'bottom', cellY: number, doorH: number, fs: number) {
+  if (pos === 'top')    return cellY + 2
+  if (pos === 'center') return cellY + doorH / 2 - fs / 2
+  return cellY + doorH - fs - 2  // bottom (default)
 }
 
 function doorInsets(
@@ -56,12 +78,13 @@ function doorInsets(
 const SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330]
 
 export default function LockerBlockObjectComponent({
-  block, scale, isSelected, isInMultiSelect, labelStyle, showDepth, getStageTransform,
+  block, scale, isSelected, isInMultiSelect, labelStyle, showDepth, cadView, getStageTransform,
   onSelect, onSelectCell, onSelectLockset, selectedCellKey, selectedLocksetIdx, onChange,
   onMultiDragMove, onMultiDragEnd,
-  shiftHeld, roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
+  shiftHeld, showBlockDimensions, roomX, roomY, roomWidthPx, roomHeightPx, gridSizeMm,
 }: Props) {
-  const ls = labelStyle ?? DEFAULT_LABEL_STYLE
+  // Merge: global default → block override
+  const ls: LabelStyle = { ...(labelStyle ?? DEFAULT_LABEL_STYLE), ...(block.labelStyle ?? {}) }
   const groupRef    = useRef<Konva.Group>(null)
   const trRef       = useRef<Konva.Transformer>(null)
   const dragOrigin  = useRef<{ x: number; y: number } | null>(null)
@@ -69,14 +92,16 @@ export default function LockerBlockObjectComponent({
   const pos      = cfg.locksetPosition
   const numCols  = cfg.columns.length
 
-  const frameColor   = block.frameColor   ?? DEFAULT_FRAME_COLOR
-  const locksetColor = block.locksetColor ?? DEFAULT_LOCKSET_COLOR
+  const CAD_FILL      = 'white'
+  const CAD_STROKE    = '#1e293b'
+  const frameColor   = cadView ? CAD_FILL : (block.frameColor   ?? DEFAULT_FRAME_COLOR)
+  const locksetColor = cadView ? '#e2e8f0' : (block.locksetColor ?? DEFAULT_LOCKSET_COLOR)
 
   const wPx      = mmToPx(blockWidthMm(cfg), scale)
   const hPx      = mmToPx(blockHeightMm(cfg), scale)
   const legsPx   = mmToPx(block.legsHeightMm ?? 0, scale)
   const legsWPx  = mmToPx(block.legsWidthMm  ?? 50, scale)
-  const legsColor = block.legsColor ?? frameColor
+  const legsColor = cadView ? CAD_FILL : (block.legsColor ?? (block.frameColor ?? DEFAULT_FRAME_COLOR))
   const totalHPx  = hPx + legsPx
   // Legs use their own depth (or fall back to cabinet depth)
   const legsDepthPx = mmToPx(block.legsDepthMm ?? cfg.depthMm, scale)
@@ -156,9 +181,9 @@ export default function LockerBlockObjectComponent({
         {showDepth && (() => {
           const depthPx    = mmToPx(cfg.depthMm, scale)
           const { dx, dy } = projOffset(depthPx)
-          const base       = block.depthColor ?? frameColor
-          const topFill    = darkenHex(base, 0.15)
-          const sideFill   = darkenHex(base, 0.30)
+          const base       = cadView ? '#e2e8f0' : (block.depthColor ?? (block.frameColor ?? DEFAULT_FRAME_COLOR))
+          const topFill    = cadView ? CAD_FILL : darkenHex(base, 0.15)
+          const sideFill   = cadView ? '#f1f5f9' : darkenHex(base, 0.30)
 
           // Back legs — rendered before cabinet faces so they appear behind
           const backLegNodes = legsPx > 0 ? (() => {
@@ -294,11 +319,7 @@ export default function LockerBlockObjectComponent({
               fill={trayColor}
               stroke={isTraySel ? '#f59e0b' : 'transparent'}
               strokeWidth={isTraySel ? 2 : 0}
-              onClick={(e) => {
-                if (!isSelected) return
-                e.cancelBubble = true
-                onSelectLockset(block.id, i)
-              }}
+              onClick={(e) => { e.cancelBubble = true; onSelectLockset(block.id, i) }}
             />
           )
         })}
@@ -313,22 +334,19 @@ export default function LockerBlockObjectComponent({
           let cellY = topH
           return (
             <Group key={col.id} x={colX}>
-              <Rect x={0} y={topH} width={colW} height={innerH} fill={COL_BG} />
+              <Rect x={0} y={topH} width={colW} height={innerH} fill={cadView ? CAD_FILL : COL_BG}
+                stroke={cadView ? CAD_STROKE : undefined} strokeWidth={cadView ? 0.5 : 0} />
               {col.cells.map((cell, ri2) => {
                 const cellH   = mmToPx(cell.heightMm, scale)
                 const doorH   = cellH - doorGap
-                const fill    = cell.color ?? block.color
+                const fill    = cadView ? CAD_FILL : (cell.color ?? block.color)
                 const thisCellKey = `${ci}:${ri2}`
                 const isCellSel   = isSelected && selectedCellKey === thisCellKey
                 const startY  = cellY
                 const cellRadius = cell.cornerRadius ?? block.cellCornerRadius ?? 1
                 const node = (
                   <Group key={`${col.id}-${ri2}`}
-                    onClick={(e) => {
-                      if (!isSelected) return  // let block-level click handle first select
-                      e.cancelBubble = true
-                      onSelectCell(block.id, ci, ri2)
-                    }}
+                    onClick={(e) => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
                   >
                     <Rect x={li} y={startY} width={doorW} height={doorH}
                       fill={fill} stroke={isCellSel ? '#f59e0b' : DOOR_STROKE}
@@ -337,22 +355,37 @@ export default function LockerBlockObjectComponent({
                     <Line
                       points={[li + doorW / 2, startY + 4, li + doorW / 2, startY + doorH - 4]}
                       stroke={DOOR_STROKE} strokeWidth={0.5} opacity={0.35} listening={false} />
-                    {cell.label && block.showCellLabels !== false && cell.showLabel !== false && (() => {
-                      const lp = cellLabelProps(ls.position, li, startY, doorW, doorH)
-                      const fs = ls.fontSize > 0 ? ls.fontSize : Math.max(8, doorW * 0.18)
-                      const fc = cell.labelColor ?? ls.color
+                    {cell.label && (() => {
+                      // cell.showLabel explicitly set overrides block; undefined follows block
+                      const show = cell.showLabel !== undefined
+                        ? cell.showLabel
+                        : block.showCellLabels !== false
+                      if (!show) return null
+                      const fs  = ls.fontSize > 0 ? ls.fontSize : Math.max(8, doorW * 0.18)
+                      const fc  = cell.labelColor ?? ls.color
+                      const pos = cell.labelPosition ?? ls.position
+                      const lp  = cellLabelProps(pos, li, startY, doorW, doorH, fs)
                       return (
                         <Text {...lp} text={cell.label}
                           fontSize={fs} fontFamily="monospace" fill={fc} listening={false} />
                       )
                     })()}
-                    {block.showCellDimensions !== false && cell.showDimension !== false && (
-                      <Text x={li} y={startY + doorH - 12}
-                        width={doorW} align="center"
-                        text={`${col.widthMm}×${cell.heightMm}`}
-                        fontSize={ls.fontSize > 0 ? Math.max(6, ls.fontSize * 0.7) : Math.max(6, doorW * 0.1)}
-                        fontFamily="monospace" fill={cell.labelColor ?? ls.color} opacity={0.5} listening={false} />
-                    )}
+                    {showBlockDimensions !== false && (() => {
+                      // cell.showDimension explicitly set overrides block; undefined follows block
+                      const show = cell.showDimension !== undefined
+                        ? cell.showDimension
+                        : block.showCellDimensions !== false
+                      if (!show) return null
+                      const fs  = ls.fontSize > 0 ? Math.max(6, ls.fontSize * 0.7) : Math.max(6, doorW * 0.1)
+                      const dimY = dimTextY(cell.dimensionPosition ?? 'bottom', startY, doorH, fs)
+                      return (
+                        <Text x={li} y={dimY}
+                          width={doorW} align="center"
+                          text={`${col.widthMm}×${cell.heightMm}`}
+                          fontSize={fs}
+                          fontFamily="monospace" fill={cell.labelColor ?? ls.color} opacity={0.5} listening={false} />
+                      )
+                    })()}
                   </Group>
                 )
                 cellY += cellH
@@ -380,6 +413,71 @@ export default function LockerBlockObjectComponent({
               text={block.label}
               fontSize={fs} fontFamily="monospace" fontStyle="bold"
               fill={ls.color} />
+          )
+        })()}
+
+        {/* ── Width annotation (CAD dimension line) ── */}
+        {block.showWidthAnnotation && (() => {
+          const OFFSET = 16
+          const fs = block.sizeAnnotationFontSize ?? 9
+          const side = block.widthAnnotationSide ?? 'bottom'
+          const y = side === 'bottom' ? hPx + OFFSET : -(OFFSET + 4)
+          const tickH = 5
+          const label = `${Math.round(blockWidthMm(cfg))}mm`
+          return (
+            <Group name="width-annot" listening={false}>
+              <Line points={[0, y - tickH, 0, y + tickH]} stroke="#3b82f6" strokeWidth={0.8} />
+              <Line points={[wPx, y - tickH, wPx, y + tickH]} stroke="#3b82f6" strokeWidth={0.8} />
+              <Arrow points={[0, y, wPx, y]}
+                pointerLength={5} pointerWidth={4}
+                fill="#3b82f6" stroke="#3b82f6" strokeWidth={0.8}
+                pointerAtBeginning pointerAtEnding />
+              <Text x={0} y={y - fs - 2} width={wPx} align="center"
+                text={label} fontSize={fs} fontFamily="monospace" fill="#3b82f6" listening={false} />
+            </Group>
+          )
+        })()}
+
+        {/* ── Depth annotation (text label below the width line or block) ── */}
+        {block.showDepthAnnotation && (() => {
+          const OFFSET = 16
+          const fs = block.sizeAnnotationFontSize ?? 9
+          const widthSide = block.widthAnnotationSide ?? 'bottom'
+          // Stack below width annotation if both are shown; otherwise just below block
+          const y = block.showWidthAnnotation
+            ? (widthSide === 'bottom' ? hPx + OFFSET * 2 + fs + 4 : -(OFFSET * 2 + fs + 4))
+            : (hPx + OFFSET)
+          const label = `D: ${cfg.depthMm}mm`
+          return (
+            <Text x={0} y={y} width={wPx} align="center"
+              text={label} fontSize={fs} fontFamily="monospace" fill="#3b82f6"
+              listening={false} />
+          )
+        })()}
+
+        {/* ── Height annotation (CAD dimension line) ── */}
+        {block.showHeightAnnotation && (() => {
+          const OFFSET = 16
+          const fs = block.sizeAnnotationFontSize ?? 9
+          const side = block.heightAnnotationSide ?? 'left'
+          const x = side === 'left' ? -OFFSET : wPx + OFFSET
+          const tickW = 5
+          const label = `${Math.round(blockHeightMm(cfg))}mm`
+          const midY = hPx / 2
+          return (
+            <Group name="height-annot" listening={false}>
+              <Line points={[x - tickW, 0, x + tickW, 0]} stroke="#3b82f6" strokeWidth={0.8} />
+              <Line points={[x - tickW, hPx, x + tickW, hPx]} stroke="#3b82f6" strokeWidth={0.8} />
+              <Arrow points={[x, 0, x, hPx]}
+                pointerLength={5} pointerWidth={4}
+                fill="#3b82f6" stroke="#3b82f6" strokeWidth={0.8}
+                pointerAtBeginning pointerAtEnding />
+              <Text
+                x={side === 'left' ? x - fs - 2 : x + 4}
+                y={midY - (label.length * fs * 0.3)}
+                text={label} fontSize={fs} fontFamily="monospace" fill="#3b82f6"
+                rotation={-90} listening={false} />
+            </Group>
           )
         })()}
       </Group>
