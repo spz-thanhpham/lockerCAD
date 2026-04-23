@@ -2,7 +2,7 @@
 // app/layouts/page.tsx
 // Dashboard — companies (projects) on the left, layouts for the selected company on the right.
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
@@ -304,9 +304,27 @@ export default function LayoutsPage() {
   const [error, setError]                     = useState<string | null>(null)
   const [shareModal, setShareModal]           = useState<{ id: string; name: string } | null>(null)
 
-  // Set to true before setSelectedId in the dashboard load to skip the
-  // redundant loadLayouts that the selectedId effect would otherwise trigger.
-  const skipNextLayoutLoad = useRef(false)
+  const loadLayouts = useCallback(async (projectId: string) => {
+    setLoadingLayouts(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/layouts?projectId=${projectId}`)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      setLayouts(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setLayouts([])
+      setError(`Failed to load layouts (${err instanceof Error ? err.message : 'network error'})`)
+    } finally {
+      setLoadingLayouts(false)
+    }
+  }, [])
+
+  const selectCompany = useCallback((id: string | null) => {
+    setSelectedId(id)
+    if (id) loadLayouts(id)
+    else setLayouts([])
+  }, [loadLayouts])
 
   // Initial load — single request returns companies + shared + first project layouts
   useEffect(() => {
@@ -317,50 +335,14 @@ export default function LayoutsPage() {
         const data = await res.json()
         setCompanies(data.projects ?? [])
         setSharedCompanies(data.sharedProjects ?? [])
+        // Layouts for firstProjectId already come bundled — no extra fetch needed
         setLayouts(data.layouts ?? [])
-        if (data.firstProjectId) {
-          skipNextLayoutLoad.current = true
-          setSelectedId(data.firstProjectId)
-        }
+        setSelectedId(data.firstProjectId ?? null)
       })
       .catch(() => setError('Failed to load'))
       .finally(() => setLoadingCo(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const loadLayouts = useCallback(async (projectId: string) => {
-    setLoadingLayouts(true)
-    try {
-      const res = await fetch(`/api/layouts?projectId=${projectId}`)
-      if (!res.ok) throw new Error(`${res.status}`)
-      const data = await res.json()
-      setLayouts(Array.isArray(data) ? data : [])
-      setError(null)
-    } catch (err) {
-      setLayouts([])
-      setError(`Failed to load layouts (${err instanceof Error ? err.message : 'network error'})`)
-    } finally {
-      setLoadingLayouts(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!selectedId) return
-    if (skipNextLayoutLoad.current) { skipNextLayoutLoad.current = false; return }
-    loadLayouts(selectedId)
-  }, [selectedId, loadLayouts])
-
-  // When switching tabs, auto-select first item
-  useEffect(() => {
-    if (viewTab === 'mine' && companies.length > 0) {
-      setSelectedId(companies[0].id)
-    } else if (viewTab === 'shared' && sharedCompanies.length > 0) {
-      setSelectedId(sharedCompanies[0].id)
-    } else {
-      setSelectedId(null)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewTab])
 
   const handleAddCompany = async () => {
     if (!newCoName.trim()) return
@@ -372,7 +354,7 @@ export default function LayoutsPage() {
     if (!res.ok) return
     const created: Company = await res.json()
     setCompanies((prev) => [...prev, created])
-    setSelectedId(created.id)
+    selectCompany(created.id)
     setNewCoName('')
     setAddingCo(false)
   }
@@ -392,7 +374,10 @@ export default function LayoutsPage() {
     if (!confirm(`Delete this company and all its layouts?`)) return
     await fetch(`/api/projects/${id}`, { method: 'DELETE' })
     setCompanies((prev) => prev.filter((c) => c.id !== id))
-    if (selectedId === id) setSelectedId(companies.find((c) => c.id !== id)?.id ?? null)
+    if (selectedId === id) {
+      const next = companies.find((c) => c.id !== id)?.id ?? null
+      selectCompany(next)
+    }
   }
 
   const handleRenameLayout = async (id: string, name: string) => {
@@ -462,7 +447,11 @@ export default function LayoutsPage() {
           {/* View tabs */}
           <div className="p-2 border-b flex gap-1">
             <button
-              onClick={() => setViewTab('mine')}
+              onClick={() => {
+                setViewTab('mine')
+                const first = companies[0]?.id ?? null
+                selectCompany(first)
+              }}
               className={`flex-1 py-1 text-xs rounded font-medium transition-colors ${
                 viewTab === 'mine' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}
@@ -470,7 +459,11 @@ export default function LayoutsPage() {
               My work
             </button>
             <button
-              onClick={() => setViewTab('shared')}
+              onClick={() => {
+                setViewTab('shared')
+                const first = sharedCompanies[0]?.id ?? null
+                selectCompany(first)
+              }}
               className={`flex-1 py-1 text-xs rounded font-medium transition-colors ${
                 viewTab === 'shared' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}
@@ -505,7 +498,7 @@ export default function LayoutsPage() {
                   key={c.id}
                   company={c}
                   active={c.id === selectedId}
-                  onSelect={() => setSelectedId(c.id)}
+                  onSelect={() => selectCompany(c.id)}
                   onRename={(name) => handleRenameCompany(c.id, name)}
                   onDelete={() => handleDeleteCompany(c.id)}
                   onShare={() => setShareModal({ id: c.id, name: c.name })}
