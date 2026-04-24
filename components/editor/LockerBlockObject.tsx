@@ -155,8 +155,8 @@ export default function LockerBlockObjectComponent({
         ref={groupRef}
         x={block.x} y={block.y} rotation={block.rotation}
         draggable
-        onClick={(e) => onSelect(e.evt.ctrlKey || e.evt.metaKey)}
-        onTap={() => onSelect(false)}
+        onClick={(e) => { e.cancelBubble = true; onSelect(e.evt.ctrlKey || e.evt.metaKey) }}
+        onTap={(e)   => { e.cancelBubble = true; onSelect(false) }}
         dragBoundFunc={boundFunc}
         onDragStart={() => { dragOrigin.current = { x: block.x, y: block.y } }}
         onDragMove={(e) => {

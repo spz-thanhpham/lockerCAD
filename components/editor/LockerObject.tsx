@@ -63,8 +63,8 @@ export default function LockerObjectComponent({
         y={locker.y}
         rotation={locker.rotation}
         draggable
-        onClick={(e) => onSelect(e.evt.ctrlKey || e.evt.metaKey)}
-        onTap={() => onSelect(false)}
+        onClick={(e) => { e.cancelBubble = true; onSelect(e.evt.ctrlKey || e.evt.metaKey) }}
+        onTap={(e)   => { e.cancelBubble = true; onSelect(false) }}
         dragBoundFunc={boundFunc}
         onDragStart={() => { dragOrigin.current = { x: locker.x, y: locker.y } }}
         onDragMove={(e) => {

@@ -328,7 +328,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
   }, [])
 
   const handleStageClick = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
+    (_e: Konva.KonvaEventObject<MouseEvent>) => {
       if (activeTool === 'text') {
         const pos = stageRef.current?.getRelativePointerPosition()
         if (pos) { onAddTextLabel(pos.x, pos.y); onToolChange?.('select') }
@@ -339,9 +339,11 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function Can
         if (pos) { onAddShape(activeTool, pos.x, pos.y); onToolChange?.('select') }
         return
       }
-      // After a drag-select, suppress the click-deselect
+      // All selectable objects cancel event bubbling, so this handler only
+      // fires for clicks on truly empty canvas → always deselect.
+      // After a drag-select, suppress the click-deselect.
       if (wasDragSelect.current) { wasDragSelect.current = false; return }
-      if (!isOnObject(e.target)) onSelectItem(null, null)
+      onSelectItem(null, null)
     },
     [activeTool, onAddTextLabel, onAddShape, onToolChange, onSelectItem]
   )
