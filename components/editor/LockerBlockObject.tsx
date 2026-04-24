@@ -354,9 +354,11 @@ export default function LockerBlockObjectComponent({
                       onTap={(e)   => { e.cancelBubble = true; onSelectCell(block.id, ci, ri2) }}
                     />
                     {/* centre crease line */}
-                    <Line
-                      points={[li + doorW / 2, startY + 4, li + doorW / 2, startY + doorH - 4]}
-                      stroke={DOOR_STROKE} strokeWidth={0.5} opacity={0.35} listening={false} />
+                    {block.showCreaseLine !== false && (
+                      <Line
+                        points={[li + doorW / 2, startY + 4, li + doorW / 2, startY + doorH - 4]}
+                        stroke={DOOR_STROKE} strokeWidth={0.5} opacity={0.35} listening={false} />
+                    )}
                     {cell.label && (() => {
                       // cell.showLabel explicitly set overrides block; undefined follows block
                       const show = cell.showLabel !== undefined

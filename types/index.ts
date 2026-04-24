@@ -87,6 +87,7 @@ export interface LockerBlock {
   showBlockLabel?: boolean      // show/hide the block name label; default true
   showCellLabels?: boolean      // show/hide all cell label texts; default true
   showCellDimensions?: boolean  // show/hide all cell W×H dimension texts; default true
+  showCreaseLine?: boolean      // show/hide the centre crease line on each door; default true
   showDepthLabel?: boolean      // show/hide the depth annotation arrow+text; default true
   showWidthAnnotation?: boolean      // CAD-style overall width dimension line; default false
   showHeightAnnotation?: boolean     // CAD-style overall height dimension line; default false

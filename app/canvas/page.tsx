@@ -1208,6 +1208,7 @@ function CanvasEditor() {
                   ['showBlockLabel',     'Block name'],
                   ['showCellLabels',     'Cell labels'],
                   ['showCellDimensions', 'Cell dimensions'],
+                  ['showCreaseLine',     'Door crease line'],
                   ['showDepthLabel',     'Depth annotation'],
                 ] as [keyof typeof selectedBlock, string][]).map(([key, label]) => (
                   <label key={key} className="flex items-center justify-between cursor-pointer">
