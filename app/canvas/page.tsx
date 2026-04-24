@@ -57,14 +57,39 @@ function AlignmentPanel({ count, onAlign }: { count: number; onAlign: (a: Alignm
 }
 
 // ── Color row ─────────────────────────────────────────────────────
-function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => { setDraft(value) }, [value])
+  const tryCommit = (text: string) => {
+    const s = text.trim()
+    const hex = s.startsWith('#') ? s : '#' + s
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) onChange(hex.toLowerCase())
+    else setDraft(value)
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <input type="color" value={value}
+        onChange={(e) => { onChange(e.target.value); setDraft(e.target.value) }}
+        className="w-6 h-6 border rounded cursor-pointer shrink-0 p-0.5" />
+      <input type="text" value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => tryCommit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') tryCommit((e.target as HTMLInputElement).value) }}
+        className="w-[4.5rem] text-[10px] font-mono text-gray-500 border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+    </div>
+  )
+}
+
+function ColorRow({ label, value, onChange, onReset }: { label: string; value: string; onChange: (v: string) => void; onReset?: () => void }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-gray-500 text-xs">{label}</span>
       <div className="flex items-center gap-1.5">
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value)}
-          className="w-6 h-6 border rounded cursor-pointer" />
-        <span className="text-[10px] font-mono text-gray-400">{value}</span>
+        <ColorInput value={value} onChange={onChange} />
+        {onReset && (
+          <button onClick={onReset} title="Reset to default"
+            className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
+        )}
       </div>
     </div>
   )
@@ -180,12 +205,7 @@ function TextLabelPanel({ label, onChange, onDelete }: {
 
       <div className="flex items-center justify-between">
         <span className="text-gray-500">Colour</span>
-        <div className="flex items-center gap-1.5">
-          <input type="color" value={label.color}
-            onChange={(e) => update({ color: e.target.value })}
-            className="w-6 h-6 rounded cursor-pointer border" />
-          <span className="text-[10px] font-mono text-gray-400">{label.color}</span>
-        </div>
+        <ColorInput value={label.color} onChange={(v) => update({ color: v })} />
       </div>
 
       <div>
@@ -318,10 +338,9 @@ function ShapePanel({ shape, onChange, onDelete }: {
       <div className="flex items-center justify-between">
         <span className="text-gray-500">Fill</span>
         <div className="flex items-center gap-1.5">
-          <input type="color"
-            value={shape.fill.startsWith('rgba') ? '#3b82f6' : shape.fill}
-            onChange={(e) => update({ fill: e.target.value })}
-            className="w-6 h-6 rounded cursor-pointer border" />
+          <ColorInput
+            value={shape.fill === 'transparent' ? '#ffffff' : (shape.fill.startsWith('rgba') ? '#3b82f6' : shape.fill)}
+            onChange={(v) => update({ fill: v })} />
           <button onClick={() => update({ fill: 'transparent' })}
             title="No fill"
             className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
@@ -349,9 +368,7 @@ function ShapePanel({ shape, onChange, onDelete }: {
       {/* Stroke colour */}
       <div className="flex items-center justify-between">
         <span className="text-gray-500">Border colour</span>
-        <input type="color" value={shape.stroke}
-          onChange={(e) => update({ stroke: e.target.value })}
-          className="w-6 h-6 rounded cursor-pointer border" />
+        <ColorInput value={shape.stroke} onChange={(v) => update({ stroke: v })} />
       </div>
 
       {/* Stroke width */}
@@ -784,9 +801,7 @@ function CanvasEditor() {
                       ))}
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-gray-500 w-10 shrink-0">Color</span>
-                        <input type="color" value={t.color}
-                          onChange={(e) => updateLockerTpl(t.id, { color: e.target.value })}
-                          className="w-7 h-5 rounded cursor-pointer border" />
+                        <ColorInput value={t.color} onChange={(v) => updateLockerTpl(t.id, { color: v })} />
                       </div>
                       <button onClick={() => setEditingLTplId(null)}
                         className="w-full mt-0.5 py-0.5 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700">Done</button>
@@ -821,9 +836,7 @@ function CanvasEditor() {
                 ))}
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-gray-500 w-10 shrink-0">Color</span>
-                  <input type="color" value={newLTpl.color}
-                    onChange={(e) => setNewLTpl((p) => ({ ...p, color: e.target.value }))}
-                    className="w-7 h-5 rounded cursor-pointer border" />
+                  <ColorInput value={newLTpl.color} onChange={(v) => setNewLTpl((p) => ({ ...p, color: v }))} />
                 </div>
                 <div className="flex gap-1 mt-0.5">
                   <button onClick={() => { addLockerTpl(newLTpl); setAddingLTpl(false) }}
@@ -1007,13 +1020,9 @@ function CanvasEditor() {
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Tray colour</p>
                 <div className="flex items-center gap-1.5">
-                  <input type="color"
+                  <ColorInput
                     value={selectedLocksetColor ?? selectedBlock.locksetColor ?? '#1e293b'}
-                    onChange={(e) => updateLocksetColor(e.target.value)}
-                    className="w-6 h-6 rounded cursor-pointer border" />
-                  <span className="text-[10px] font-mono text-gray-400">
-                    {selectedLocksetColor ?? selectedBlock.locksetColor ?? '#1e293b'}
-                  </span>
+                    onChange={(v) => updateLocksetColor(v)} />
                   {selectedLocksetColor && (
                     <button onClick={() => updateLocksetColor(undefined)}
                       title="Reset to block default" className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
@@ -1055,10 +1064,9 @@ function CanvasEditor() {
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">Label colour</span>
                     <div className="flex items-center gap-1.5">
-                      <input type="color"
+                      <ColorInput
                         value={selectedCellData.labelColor ?? '#1e293b'}
-                        onChange={(e) => updateCell({ labelColor: e.target.value })}
-                        className="w-6 h-6 rounded cursor-pointer border" />
+                        onChange={(v) => updateCell({ labelColor: v })} />
                       {selectedCellData.labelColor && (
                         <button onClick={() => updateCell({ labelColor: undefined as unknown as string })}
                           title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
@@ -1157,10 +1165,9 @@ function CanvasEditor() {
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Door colour</p>
                 <div className="flex items-center gap-1.5">
-                  <input type="color"
+                  <ColorInput
                     value={selectedCellData.color ?? selectedBlock.color}
-                    onChange={(e) => updateCell({ color: e.target.value })}
-                    className="w-6 h-6 rounded cursor-pointer border" />
+                    onChange={(v) => updateCell({ color: v })} />
                   {selectedCellData.color && (
                     <button onClick={() => updateCell({ color: undefined as unknown as string })}
                       className="text-[10px] text-gray-400 hover:text-gray-600" title="Reset to block default">↺</button>
@@ -1291,10 +1298,9 @@ function CanvasEditor() {
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500 text-xs">Label colour</span>
                   <div className="flex items-center gap-1.5">
-                    <input type="color"
+                    <ColorInput
                       value={selectedBlock.labelStyle?.color ?? labelStyle.color}
-                      onChange={(e) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, color: e.target.value } })}
-                      className="w-6 h-6 rounded cursor-pointer border" />
+                      onChange={(v) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, color: v } })} />
                     {selectedBlock.labelStyle?.color && (
                       <button onClick={() => { const ls = { ...selectedBlock.labelStyle }; delete ls.color; updateLockerBlock({ ...selectedBlock, labelStyle: ls }) }}
                         title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
