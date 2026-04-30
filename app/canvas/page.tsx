@@ -9,6 +9,7 @@ import { useTemplateStore } from '@/lib/template-store'
 import { useLockerTemplateStore } from '@/lib/locker-template-store'
 import PropertiesPanel from '@/components/editor/PropertiesPanel'
 import NumericInput from '@/components/editor/NumericInput'
+import ColorInput from '@/components/editor/ColorInput'
 import Toolbar from '@/components/editor/Toolbar'
 import LockerCreateForm from '@/components/editor/LockerCreateForm'
 import { type LockerBlock, type LockerCell, type TextLabel, type ShapeObject, type OfficeInfo, type LabelPosition, type LabelStyle, DEFAULT_LABEL_STYLE } from '@/types'
@@ -57,29 +58,6 @@ function AlignmentPanel({ count, onAlign }: { count: number; onAlign: (a: Alignm
 }
 
 // ── Color row ─────────────────────────────────────────────────────
-function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [draft, setDraft] = useState(value)
-  useEffect(() => { setDraft(value) }, [value])
-  const tryCommit = (text: string) => {
-    const s = text.trim()
-    const hex = s.startsWith('#') ? s : '#' + s
-    if (/^#[0-9a-fA-F]{6}$/.test(hex)) onChange(hex.toLowerCase())
-    else setDraft(value)
-  }
-  return (
-    <div className="flex items-center gap-1">
-      <input type="color" value={value}
-        onChange={(e) => { onChange(e.target.value); setDraft(e.target.value) }}
-        className="w-6 h-6 border rounded cursor-pointer shrink-0 p-0.5" />
-      <input type="text" value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={(e) => tryCommit(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') tryCommit((e.target as HTMLInputElement).value) }}
-        className="w-[4.5rem] text-[10px] font-mono text-gray-500 border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-    </div>
-  )
-}
-
 function ColorRow({ label, value, onChange, onReset }: { label: string; value: string; onChange: (v: string) => void; onReset?: () => void }) {
   return (
     <div className="flex items-center justify-between">

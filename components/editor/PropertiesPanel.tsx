@@ -4,6 +4,7 @@
 
 import type { LockerObject } from '@/types'
 import NumericInput from './NumericInput'
+import ColorInput from './ColorInput'
 
 interface Props {
   locker: LockerObject | null
@@ -82,12 +83,7 @@ export default function PropertiesPanel({ locker, showDepth, onChange, onDelete 
         ] as [keyof LockerObject, string, string][]).map(([key, label, val]) => (
           <div key={key} className="flex items-center justify-between">
             <span className="text-gray-500">{label}</span>
-            <div className="flex items-center gap-1.5">
-              <input type="color" value={val}
-                onChange={(e) => update(key, e.target.value)}
-                className="w-6 h-6 rounded cursor-pointer border" />
-              <span className="text-[10px] font-mono text-gray-400">{val}</span>
-            </div>
+            <ColorInput value={val} onChange={(v) => update(key, v)} align="right" />
           </div>
         ))}
       </div>
