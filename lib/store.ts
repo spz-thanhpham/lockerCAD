@@ -54,6 +54,7 @@ const snap = (s: CanvasStore): SnapshotState => ({
 })
 
 const MAX_HISTORY = 20
+const UPDATE_DEBOUNCE_MS = 600  // rapid update calls (e.g. color picker drag) share one history slot
 
 interface CanvasStore {
   // State
@@ -76,6 +77,7 @@ interface CanvasStore {
   officeInfo: OfficeInfo
   history: SnapshotState[]  // undo stack (oldest first)
   future: SnapshotState[]   // redo stack (most-recent first)
+  _historyTs: number        // timestamp of last history push (for debounce)
 
   // LockerObject actions
   addLocker: (template: Partial<LockerObject>) => void
@@ -152,6 +154,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   officeInfo: DEFAULT_OFFICE_INFO,
   history: [],
   future: [],
+  _historyTs: 0,
 
   // ── LockerObject ──────────────────────────────────────────────
   addLocker: (template) => {
@@ -176,11 +179,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   updateLocker: (updated) =>
-    set((s) => ({
-      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
-      lockers: s.lockers.map((l) => (l.id === updated.id ? updated : l)),
-      isDirty: true,
-    })),
+    set((s) => {
+      const ts = Date.now()
+      const push = ts - s._historyTs > UPDATE_DEBOUNCE_MS
+      return {
+        ...(push ? { history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [], _historyTs: ts } : {}),
+        lockers: s.lockers.map((l) => (l.id === updated.id ? updated : l)),
+        isDirty: true,
+      }
+    }),
 
   deleteLocker: (id) =>
     set((s) => ({
@@ -204,11 +211,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   updateLockerBlock: (updated) =>
-    set((s) => ({
-      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
-      lockerBlocks: s.lockerBlocks.map((b) => (b.id === updated.id ? updated : b)),
-      isDirty: true,
-    })),
+    set((s) => {
+      const ts = Date.now()
+      const push = ts - s._historyTs > UPDATE_DEBOUNCE_MS
+      return {
+        ...(push ? { history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [], _historyTs: ts } : {}),
+        lockerBlocks: s.lockerBlocks.map((b) => (b.id === updated.id ? updated : b)),
+        isDirty: true,
+      }
+    }),
 
   deleteLockerBlock: (id) =>
     set((s) => ({
@@ -240,11 +251,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   updateTextLabel: (updated) =>
-    set((s) => ({
-      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
-      textLabels: s.textLabels.map((t) => (t.id === updated.id ? updated : t)),
-      isDirty: true,
-    })),
+    set((s) => {
+      const ts = Date.now()
+      const push = ts - s._historyTs > UPDATE_DEBOUNCE_MS
+      return {
+        ...(push ? { history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [], _historyTs: ts } : {}),
+        textLabels: s.textLabels.map((t) => (t.id === updated.id ? updated : t)),
+        isDirty: true,
+      }
+    }),
 
   deleteTextLabel: (id) =>
     set((s) => ({
@@ -281,11 +296,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   updateShape: (updated) =>
-    set((s) => ({
-      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
-      shapes: s.shapes.map((sh) => (sh.id === updated.id ? updated : sh)),
-      isDirty: true,
-    })),
+    set((s) => {
+      const ts = Date.now()
+      const push = ts - s._historyTs > UPDATE_DEBOUNCE_MS
+      return {
+        ...(push ? { history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [], _historyTs: ts } : {}),
+        shapes: s.shapes.map((sh) => (sh.id === updated.id ? updated : sh)),
+        isDirty: true,
+      }
+    }),
 
   deleteShape: (id) =>
     set((s) => ({
@@ -550,6 +569,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       selectedIds: [],
       history: [],
       future: [],
+      _historyTs: 0,
     }),
 
   getCanvasData: (): CanvasData => {

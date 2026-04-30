@@ -115,14 +115,18 @@ export default function Toolbar({
       </div>
 
       {/* Undo / Redo */}
-      <div className="flex items-center border rounded p-0.5">
+      <div className="flex items-center border rounded p-0.5 gap-0.5">
         <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)"
-          className="px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-          ↩
+          className="flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors disabled:cursor-not-allowed
+            enabled:text-gray-700 enabled:hover:bg-gray-100
+            disabled:text-gray-300">
+          ↩ <span>Undo</span>
         </button>
-        <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)"
-          className="px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-          ↪
+        <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
+          className="flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors disabled:cursor-not-allowed
+            enabled:text-gray-700 enabled:hover:bg-gray-100
+            disabled:text-gray-300">
+          ↪ <span>Redo</span>
         </button>
       </div>
 
