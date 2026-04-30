@@ -33,6 +33,28 @@ type ClipboardItem =
   | { type: 'textLabel'; data: TextLabel    }
   | { type: 'shape';     data: ShapeObject  }
 
+// Snapshot of canvas objects only (not UI/selection state)
+type SnapshotState = {
+  lockers: LockerObject[]
+  lockerBlocks: LockerBlock[]
+  textLabels: TextLabel[]
+  shapes: ShapeObject[]
+  room: RoomConfig
+  labelStyle: LabelStyle
+  officeInfo: OfficeInfo
+  projectName: string
+}
+
+// Captures the canvas snapshot from a live store state
+const snap = (s: CanvasStore): SnapshotState => ({
+  lockers: s.lockers, lockerBlocks: s.lockerBlocks,
+  textLabels: s.textLabels, shapes: s.shapes,
+  room: s.room, labelStyle: s.labelStyle,
+  officeInfo: s.officeInfo, projectName: s.projectName,
+})
+
+const MAX_HISTORY = 20
+
 interface CanvasStore {
   // State
   lockers: LockerObject[]
@@ -52,6 +74,8 @@ interface CanvasStore {
   projectName: string
   labelStyle: LabelStyle
   officeInfo: OfficeInfo
+  history: SnapshotState[]  // undo stack (oldest first)
+  future: SnapshotState[]   // redo stack (most-recent first)
 
   // LockerObject actions
   addLocker: (template: Partial<LockerObject>) => void
@@ -90,6 +114,10 @@ interface CanvasStore {
   // Alignment (operates on selectedIds)
   alignItems: (alignment: AlignmentType) => void
 
+  // Undo / redo
+  undo: () => void
+  redo: () => void
+
   // Canvas / room
   setRoom: (room: Partial<RoomConfig>) => void
   setShowDimensions: (show: boolean) => void
@@ -122,10 +150,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   projectName: 'New Layout',
   labelStyle: DEFAULT_LABEL_STYLE,
   officeInfo: DEFAULT_OFFICE_INFO,
+  history: [],
+  future: [],
 
   // ── LockerObject ──────────────────────────────────────────────
   addLocker: (template) => {
-    const { lockers } = get()
     const newLocker: LockerObject = {
       id: nanoid(),
       x: 80,
@@ -133,22 +162,29 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       widthMm: 300,
       heightMm: 1800,
       depthMm: 450,
-      label: nextLabel(lockers),
+      label: nextLabel(get().lockers),
       color: '#94a3b8',
       rotation: 0,
       ...template,
     }
-    set({ lockers: [...lockers, newLocker], selectedId: newLocker.id, selectedType: 'locker', selectedIds: [newLocker.id], isDirty: true })
+    set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
+      lockers: [...s.lockers, newLocker],
+      selectedId: newLocker.id, selectedType: 'locker' as const, selectedIds: [newLocker.id],
+      isDirty: true,
+    }))
   },
 
   updateLocker: (updated) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockers: s.lockers.map((l) => (l.id === updated.id ? updated : l)),
       isDirty: true,
     })),
 
   deleteLocker: (id) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockers: s.lockers.filter((l) => l.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
@@ -160,22 +196,23 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   addLockerBlock: (block) => {
     const newBlock: LockerBlock = { ...block, id: nanoid() }
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockerBlocks: [...s.lockerBlocks, newBlock],
-      selectedId: newBlock.id,
-      selectedType: 'block',
-      selectedIds: [newBlock.id],
+      selectedId: newBlock.id, selectedType: 'block' as const, selectedIds: [newBlock.id],
       isDirty: true,
     }))
   },
 
   updateLockerBlock: (updated) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockerBlocks: s.lockerBlocks.map((b) => (b.id === updated.id ? updated : b)),
       isDirty: true,
     })),
 
   deleteLockerBlock: (id) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockerBlocks: s.lockerBlocks.filter((b) => b.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
@@ -195,22 +232,23 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       rotation: 0,
     }
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       textLabels: [...s.textLabels, newLabel],
-      selectedId: newLabel.id,
-      selectedType: 'textLabel',
-      selectedIds: [newLabel.id],
+      selectedId: newLabel.id, selectedType: 'textLabel' as const, selectedIds: [newLabel.id],
       isDirty: true,
     }))
   },
 
   updateTextLabel: (updated) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       textLabels: s.textLabels.map((t) => (t.id === updated.id ? updated : t)),
       isDirty: true,
     })),
 
   deleteTextLabel: (id) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       textLabels: s.textLabels.filter((t) => t.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
@@ -235,22 +273,23 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       cornerRadius: 0,
     }
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       shapes: [...s.shapes, newShape],
-      selectedId: newShape.id,
-      selectedType: 'shape',
-      selectedIds: [newShape.id],
+      selectedId: newShape.id, selectedType: 'shape' as const, selectedIds: [newShape.id],
       isDirty: true,
     }))
   },
 
   updateShape: (updated) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       shapes: s.shapes.map((sh) => (sh.id === updated.id ? updated : sh)),
       isDirty: true,
     })),
 
   deleteShape: (id) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       shapes: s.shapes.filter((sh) => sh.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
@@ -302,6 +341,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         : clipboard[0]?.type === 'textLabel' ? 'textLabel'
         : 'shape'
       return {
+        history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
         lockers: newLockers, lockerBlocks: newBlocks,
         textLabels: newTextLabels, shapes: newShapes,
         selectedIds: newIds, selectedId: newIds[0] ?? null,
@@ -323,6 +363,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const { selectedIds } = get()
     if (selectedIds.length === 0) return
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockers:      s.lockers.filter((l)  => !s.selectedIds.includes(l.id)),
       lockerBlocks: s.lockerBlocks.filter((b) => !s.selectedIds.includes(b.id)),
       textLabels:   s.textLabels.filter((t)  => !s.selectedIds.includes(t.id)),
@@ -378,6 +419,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   bulkMove: (dx, dy) =>
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockers: s.lockers.map((l) =>
         s.selectedIds.includes(l.id) ? { ...l, x: l.x + dx, y: l.y + dy } : l
       ),
@@ -443,10 +485,38 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
 
     set((s) => ({
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)], future: [],
       lockers:      s.lockers.map((l)      => newPos[l.id] ? { ...l, ...newPos[l.id] } : l),
       lockerBlocks: s.lockerBlocks.map((b) => newPos[b.id] ? { ...b, ...newPos[b.id] } : b),
       isDirty: true,
     }))
+  },
+
+  // ── Undo / Redo ───────────────────────────────────────────────
+  undo: () => {
+    const s = get()
+    if (s.history.length === 0) return
+    const prev = s.history[s.history.length - 1]
+    set({
+      ...prev,
+      history: s.history.slice(0, -1),
+      future: [snap(s), ...s.future.slice(0, MAX_HISTORY - 1)],
+      selectedId: null, selectedType: null, selectedIds: [],
+      isDirty: true,
+    })
+  },
+
+  redo: () => {
+    const s = get()
+    if (s.future.length === 0) return
+    const next = s.future[0]
+    set({
+      ...next,
+      history: [...s.history.slice(-(MAX_HISTORY - 1)), snap(s)],
+      future: s.future.slice(1),
+      selectedId: null, selectedType: null, selectedIds: [],
+      isDirty: true,
+    })
   },
 
   // ── Canvas / room ────────────────────────────────────────────
@@ -478,6 +548,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       selectedId: null,
       selectedType: null,
       selectedIds: [],
+      history: [],
+      future: [],
     }),
 
   getCanvasData: (): CanvasData => {
@@ -500,5 +572,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     projectName: 'New Layout',
     labelStyle: DEFAULT_LABEL_STYLE,
     officeInfo: DEFAULT_OFFICE_INFO,
+    history: [],
+    future: [],
   }),
 }))

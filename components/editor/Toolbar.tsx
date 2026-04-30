@@ -36,6 +36,10 @@ interface Props {
   onRenameProject: (name: string) => void
   showDimensions: boolean
   onSelectAll: () => void
+  onUndo: () => void
+  onRedo: () => void
+  canUndo: boolean
+  canRedo: boolean
 }
 
 export default function Toolbar({
@@ -43,7 +47,7 @@ export default function Toolbar({
   zoom,
   onSave, saving, autoSaving, isDirty,
   canvasData, getStageDataUrl, projectName, onRenameProject, showDimensions,
-  onSelectAll,
+  onSelectAll, onUndo, onRedo, canUndo, canRedo,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [zoomLocked, setZoomLockedState] = useState(false)
@@ -108,6 +112,18 @@ export default function Toolbar({
             {label}
           </button>
         ))}
+      </div>
+
+      {/* Undo / Redo */}
+      <div className="flex items-center border rounded p-0.5">
+        <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)"
+          className="px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+          ↩
+        </button>
+        <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)"
+          className="px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+          ↪
+        </button>
       </div>
 
       {/* Select All */}

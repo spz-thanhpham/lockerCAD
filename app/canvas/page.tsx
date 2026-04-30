@@ -275,12 +275,14 @@ function PositionGrid({ value, onChange }: { value: LabelPosition | undefined; o
 
 // ── Right-click context menu ──────────────────────────────────────
 function ContextMenu({
-  x, y, hasSelection, hasClipboard, onClose,
-  onCopy, onPaste, onDuplicate, onDelete, onSelectAll,
+  x, y, hasSelection, hasClipboard, canUndo, canRedo, onClose,
+  onUndo, onRedo, onCopy, onPaste, onDuplicate, onDelete, onSelectAll,
 }: {
   x: number; y: number
   hasSelection: boolean; hasClipboard: boolean
+  canUndo: boolean; canRedo: boolean
   onClose: () => void
+  onUndo: () => void; onRedo: () => void
   onCopy: () => void; onPaste: () => void
   onDuplicate: () => void; onDelete: () => void; onSelectAll: () => void
 }) {
@@ -298,6 +300,13 @@ function ContextMenu({
       style={{ position: 'fixed', top: y, left: x, zIndex: 9999 }}
       className="bg-white border border-gray-200 rounded shadow-lg py-1 min-w-[160px]"
     >
+      <button className={btn} disabled={!canUndo} onClick={() => { onUndo(); onClose() }}>
+        <span>Undo</span><span className="text-gray-400 text-[10px]">Ctrl+Z</span>
+      </button>
+      <button className={btn} disabled={!canRedo} onClick={() => { onRedo(); onClose() }}>
+        <span>Redo</span><span className="text-gray-400 text-[10px]">Ctrl+Y</span>
+      </button>
+      <div className="border-t my-1" />
       <button className={btn} disabled={!hasSelection} onClick={() => { onCopy(); onClose() }}>
         <span>Copy</span><span className="text-gray-400 text-[10px]">Ctrl+C</span>
       </button>
@@ -492,6 +501,10 @@ function CanvasEditor() {
   const paste             = useCanvasStore((s) => s.paste)
   const duplicate         = useCanvasStore((s) => s.duplicate)
   const deleteSelected    = useCanvasStore((s) => s.deleteSelected)
+  const undo              = useCanvasStore((s) => s.undo)
+  const redo              = useCanvasStore((s) => s.redo)
+  const canUndo           = useCanvasStore((s) => s.history.length > 0)
+  const canRedo           = useCanvasStore((s) => s.future.length > 0)
   const hasClipboard      = useCanvasStore((s) => s.clipboard.length > 0)
   const selectItem        = useCanvasStore((s) => s.selectItem)
   const toggleSelectItem  = useCanvasStore((s) => s.toggleSelectItem)
@@ -655,6 +668,8 @@ function CanvasEditor() {
       const editable = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
       if (editable) return
 
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); selectAll(); return }
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); copySelected(); return }
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); paste(); return }
@@ -663,7 +678,7 @@ function CanvasEditor() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectAll, copySelected, paste, duplicate, deleteSelected])
+  }, [undo, redo, selectAll, copySelected, paste, duplicate, deleteSelected])
 
   // Reset store for new layouts; load existing layout from URL
   useEffect(() => {
@@ -770,6 +785,7 @@ function CanvasEditor() {
         canvasData={getCanvasData()} getStageDataUrl={getStageDataUrl}
         projectName={projectName} onRenameProject={setProjectName}
         showDimensions={showDimensions} onSelectAll={selectAll}
+        onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -1512,7 +1528,9 @@ function CanvasEditor() {
           x={contextMenu.x} y={contextMenu.y}
           hasSelection={selectedIds.length > 0}
           hasClipboard={hasClipboard}
+          canUndo={canUndo} canRedo={canRedo}
           onClose={() => setContextMenu(null)}
+          onUndo={undo} onRedo={redo}
           onCopy={copySelected}
           onPaste={paste}
           onDuplicate={duplicate}
