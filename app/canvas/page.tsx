@@ -1201,21 +1201,121 @@ function CanvasEditor() {
 
           {!isMultiSelect && selectedType === 'block' && selectedBlock && (
             <div className="p-3 space-y-3 text-xs text-gray-600">
-              <div>
-                <p className="font-medium text-gray-700">{selectedBlock.label}</p>
-                <p className="text-gray-400">
-                  {selectedBlock.config.columns.length} cols ·{' '}
-                  {selectedBlock.config.columns.reduce((s, c) => s + c.cells.length, 0)} cells
-                </p>
+
+              {/* ── Block header ── */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-700">{selectedBlock.label}</p>
+                  <p className="text-gray-400">
+                    {selectedBlock.config.columns.length} cols ·{' '}
+                    {selectedBlock.config.columns.reduce((s, c) => s + c.cells.length, 0)} cells
+                  </p>
+                </div>
+                <button onClick={() => setEditingBlock(selectedBlock)}
+                  className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs hover:bg-blue-100 whitespace-nowrap">
+                  Edit…
+                </button>
               </div>
 
-              <div className="space-y-1.5">
-                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Display</p>
+              {/* ── Colours ── */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Colours</p>
+                <ColorRow label="Door"    value={selectedBlock.color}
+                  onChange={(v) => updateBlockColor(selectedBlock, 'color', v)} />
+                <ColorRow label="Frame"   value={selectedBlock.frameColor   ?? '#334155'}
+                  onChange={(v) => updateBlockColor(selectedBlock, 'frameColor', v)} />
+                <ColorRow label="Lockset Tray" value={selectedBlock.locksetColor ?? '#1e293b'}
+                  onChange={(v) => updateBlockColor(selectedBlock, 'locksetColor', v)} />
+                <ColorRow label="Depth"
+                  value={selectedBlock.depthColor ?? selectedBlock.frameColor ?? '#334155'}
+                  onChange={(v) => updateLockerBlock({ ...selectedBlock, depthColor: v })} />
+              </div>
+
+              {/* ── Door style ── */}
+              <div className="space-y-1.5 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Door style</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Corner radius (px)</span>
+                  <NumericInput min={0} max={40}
+                    value={selectedBlock.cellCornerRadius ?? 1}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, cellCornerRadius: v })}
+                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-gray-500 text-xs">Crease line</span>
+                  <input type="checkbox"
+                    checked={selectedBlock.showCreaseLine !== false}
+                    onChange={(e) => updateLockerBlock({ ...selectedBlock, showCreaseLine: e.target.checked })}
+                    className="w-4 h-4 accent-blue-500 cursor-pointer" />
+                </label>
+              </div>
+
+              {/* ── Border ── */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Border</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Width (px)</span>
+                  <NumericInput min={0} max={12}
+                    value={selectedBlock.borderWidth ?? 0}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, borderWidth: v })}
+                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Radius (px)</span>
+                  <NumericInput min={0} max={40}
+                    value={selectedBlock.borderRadius ?? 0}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, borderRadius: v })}
+                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                <ColorRow label="Colour"
+                  value={selectedBlock.borderColor ?? '#1e293b'}
+                  onChange={(v) => updateLockerBlock({ ...selectedBlock, borderColor: v })} />
+              </div>
+
+              {/* ── Label style ── */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Label style</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Font size (px, 0=auto)</span>
+                  <NumericInput min={0} max={32}
+                    value={selectedBlock.labelStyle?.fontSize ?? labelStyle.fontSize}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, fontSize: v } })}
+                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Label colour</span>
+                  <div className="flex items-center gap-1.5">
+                    <ColorInput
+                      value={selectedBlock.labelStyle?.color ?? labelStyle.color}
+                      onChange={(v) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, color: v } })} />
+                    {selectedBlock.labelStyle?.color && (
+                      <button onClick={() => { const ls = { ...selectedBlock.labelStyle }; delete ls.color; updateLockerBlock({ ...selectedBlock, labelStyle: ls }) }}
+                        title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-500 text-xs">Label position</span>
+                    {selectedBlock.labelStyle?.position && (
+                      <button onClick={() => { const ls = { ...selectedBlock.labelStyle }; delete ls.position; updateLockerBlock({ ...selectedBlock, labelStyle: ls }) }}
+                        title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺ Reset</button>
+                    )}
+                  </div>
+                  <PositionGrid
+                    value={selectedBlock.labelStyle?.position}
+                    onChange={(p) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, position: p } })}
+                  />
+                </div>
+              </div>
+
+              {/* ── Visibility ── */}
+              <div className="space-y-1.5 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Visibility</p>
                 {([
                   ['showBlockLabel',     'Block name'],
                   ['showCellLabels',     'Cell labels'],
                   ['showCellDimensions', 'Cell dimensions'],
-                  ['showCreaseLine',     'Door crease line'],
                   ['showDepthLabel',     'Depth annotation'],
                 ] as [keyof typeof selectedBlock, string][]).map(([key, label]) => (
                   <label key={key} className="flex items-center justify-between cursor-pointer">
@@ -1228,7 +1328,52 @@ function CanvasEditor() {
                 ))}
               </div>
 
-              {/* ── Size annotations (W / H dimension lines outside block) ── */}
+              {/* ── Legs ── */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Legs</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 text-xs">Height (mm)</span>
+                  <NumericInput min={0} max={300}
+                    value={selectedBlock.legsHeightMm ?? 0}
+                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsHeightMm: v })}
+                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                {(selectedBlock.legsHeightMm ?? 0) > 0 && (<>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Width (mm)</span>
+                    <NumericInput min={20} max={200}
+                      value={selectedBlock.legsWidthMm ?? 50}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsWidthMm: v })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Depth (mm)</span>
+                    <NumericInput min={10} max={1000}
+                      value={selectedBlock.legsDepthMm ?? selectedBlock.config.depthMm}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsDepthMm: v })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Inset (mm)</span>
+                    <NumericInput min={0} max={500}
+                      value={selectedBlock.legsInsetMm ?? Math.round(Math.min(selectedBlock.config.leftMarginMm, selectedBlock.config.rightMarginMm) / 2)}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsInsetMm: v })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Radius (px)</span>
+                    <NumericInput min={0} max={40}
+                      value={selectedBlock.legsCornerRadius ?? 2}
+                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsCornerRadius: v })}
+                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <ColorRow label="Colour"
+                    value={selectedBlock.legsColor ?? selectedBlock.frameColor ?? '#334155'}
+                    onChange={(v) => updateLockerBlock({ ...selectedBlock, legsColor: v })} />
+                </>)}
+              </div>
+
+              {/* ── Size annotations ── */}
               <div className="space-y-2 pt-2 border-t">
                 <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Size annotations</p>
                 <div className="flex items-center justify-between">
@@ -1285,179 +1430,48 @@ function CanvasEditor() {
                 )}
               </div>
 
-              {/* ── Label style (block-level override of global) ── */}
-              <div className="space-y-2 pt-2 border-t">
-                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Label style</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 text-xs">Font size (px, 0=auto)</span>
-                  <NumericInput min={0} max={32}
-                    value={selectedBlock.labelStyle?.fontSize ?? labelStyle.fontSize}
-                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, fontSize: v } })}
-                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 text-xs">Label colour</span>
-                  <div className="flex items-center gap-1.5">
-                    <ColorInput
-                      value={selectedBlock.labelStyle?.color ?? labelStyle.color}
-                      onChange={(v) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, color: v } })} />
-                    {selectedBlock.labelStyle?.color && (
-                      <button onClick={() => { const ls = { ...selectedBlock.labelStyle }; delete ls.color; updateLockerBlock({ ...selectedBlock, labelStyle: ls }) }}
-                        title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺</button>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-gray-500 text-xs">Label position</span>
-                    {selectedBlock.labelStyle?.position && (
-                      <button onClick={() => { const ls = { ...selectedBlock.labelStyle }; delete ls.position; updateLockerBlock({ ...selectedBlock, labelStyle: ls }) }}
-                        title="Reset to global" className="text-[10px] text-gray-400 hover:text-gray-600">↺ Reset</button>
-                    )}
-                  </div>
-                  <PositionGrid
-                    value={selectedBlock.labelStyle?.position}
-                    onChange={(p) => updateLockerBlock({ ...selectedBlock, labelStyle: { ...selectedBlock.labelStyle, position: p } })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Colours</p>
-                <ColorRow label="Door"    value={selectedBlock.color}
-                  onChange={(v) => updateBlockColor(selectedBlock, 'color', v)} />
-                <ColorRow label="Frame"   value={selectedBlock.frameColor   ?? '#334155'}
-                  onChange={(v) => updateBlockColor(selectedBlock, 'frameColor', v)} />
-                <ColorRow label="Lockset Tray" value={selectedBlock.locksetColor ?? '#1e293b'}
-                  onChange={(v) => updateBlockColor(selectedBlock, 'locksetColor', v)} />
-                <ColorRow label="Depth"
-                  value={selectedBlock.depthColor ?? selectedBlock.frameColor ?? '#334155'}
-                  onChange={(v) => updateLockerBlock({ ...selectedBlock, depthColor: v })} />
-              </div>
-
-              {/* All-cells corner radius */}
-              <div className="space-y-1.5 pt-2 border-t">
-                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Corner radius</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 text-xs">All doors (px)</span>
-                  <NumericInput min={0} max={40}
-                    value={selectedBlock.cellCornerRadius ?? 1}
-                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, cellCornerRadius: v })}
-                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                </div>
-              </div>
-
-              <div className="space-y-2 pt-2 border-t">
-                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Border</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 text-xs">Width (px)</span>
-                  <NumericInput min={0} max={12}
-                    value={selectedBlock.borderWidth ?? 0}
-                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, borderWidth: v })}
-                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 text-xs">Radius (px)</span>
-                  <NumericInput min={0} max={40}
-                    value={selectedBlock.borderRadius ?? 0}
-                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, borderRadius: v })}
-                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                </div>
-                <ColorRow label="Colour"
-                  value={selectedBlock.borderColor ?? '#1e293b'}
-                  onChange={(v) => updateLockerBlock({ ...selectedBlock, borderColor: v })} />
-              </div>
-
-              <div className="space-y-2 pt-2 border-t">
-                <p className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Legs</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 text-xs">Height (mm)</span>
-                  <NumericInput min={0} max={300}
-                    value={selectedBlock.legsHeightMm ?? 0}
-                    onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsHeightMm: v })}
-                    className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                </div>
-                {(selectedBlock.legsHeightMm ?? 0) > 0 && (<>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500 text-xs">Width (mm)</span>
-                    <NumericInput min={20} max={200}
-                      value={selectedBlock.legsWidthMm ?? 50}
-                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsWidthMm: v })}
-                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500 text-xs">Depth (mm)</span>
-                    <NumericInput min={10} max={1000}
-                      value={selectedBlock.legsDepthMm ?? selectedBlock.config.depthMm}
-                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsDepthMm: v })}
-                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500 text-xs">Inset (mm)</span>
-                    <NumericInput min={0} max={500}
-                      value={selectedBlock.legsInsetMm ?? Math.round(Math.min(selectedBlock.config.leftMarginMm, selectedBlock.config.rightMarginMm) / 2)}
-                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsInsetMm: v })}
-                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500 text-xs">Radius (px)</span>
-                    <NumericInput min={0} max={40}
-                      value={selectedBlock.legsCornerRadius ?? 2}
-                      onCommit={(v) => updateLockerBlock({ ...selectedBlock, legsCornerRadius: v })}
-                      className="w-16 border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                  <ColorRow label="Colour"
-                    value={selectedBlock.legsColor ?? selectedBlock.frameColor ?? '#334155'}
-                    onChange={(v) => updateLockerBlock({ ...selectedBlock, legsColor: v })} />
-                </>)}
-              </div>
-
+              {/* ── Frame info ── */}
               <div className="grid grid-cols-2 gap-1 text-gray-400 pt-2 border-t">
                 <span>Top:</span>   <span>{selectedBlock.config.topHeightMm}mm</span>
                 <span>Base:</span>  <span>{selectedBlock.config.baseHeightMm}mm</span>
                 <span>Depth:</span> <span>{selectedBlock.config.depthMm}mm</span>
               </div>
 
-              <button onClick={() => setEditingBlock(selectedBlock)}
-                className="w-full px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs hover:bg-blue-100">
-                Edit block…
-              </button>
-
-              {/* Save as template */}
-              {savingTpl ? (
-                <div className="flex gap-1">
-                  <input
-                    autoFocus
-                    placeholder="Template name…"
-                    value={tplName}
-                    onChange={(e) => setTplName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveTemplate()
-                      if (e.key === 'Escape') setSavingTpl(false)
-                    }}
-                    className="flex-1 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  />
-                  <button onClick={handleSaveTemplate}
-                    className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
-                    ✓
+              {/* ── Actions ── */}
+              <div className="space-y-1.5 pt-2 border-t">
+                {savingTpl ? (
+                  <div className="flex gap-1">
+                    <input
+                      autoFocus
+                      placeholder="Template name…"
+                      value={tplName}
+                      onChange={(e) => setTplName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveTemplate()
+                        if (e.key === 'Escape') setSavingTpl(false)
+                      }}
+                      className="flex-1 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    />
+                    <button onClick={handleSaveTemplate}
+                      className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
+                      ✓
+                    </button>
+                    <button onClick={() => setSavingTpl(false)}
+                      className="px-2 py-1 border rounded text-xs text-gray-500 hover:bg-gray-50">
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setTplName(selectedBlock.label); setSavingTpl(true) }}
+                    className="w-full px-3 py-1.5 bg-gray-50 text-gray-600 border border-gray-200 rounded text-xs hover:bg-gray-100">
+                    ☆ Save as template
                   </button>
-                  <button onClick={() => setSavingTpl(false)}
-                    className="px-2 py-1 border rounded text-xs text-gray-500 hover:bg-gray-50">
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <button onClick={() => { setTplName(selectedBlock.label); setSavingTpl(true) }}
-                  className="w-full px-3 py-1.5 bg-gray-50 text-gray-600 border border-gray-200 rounded text-xs hover:bg-gray-100">
-                  ☆ Save as template
+                )}
+                <button onClick={() => deleteLockerBlock(selectedBlock.id)}
+                  className="w-full px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded text-xs hover:bg-red-100">
+                  Delete block
                 </button>
-              )}
-
-              <button onClick={() => deleteLockerBlock(selectedBlock.id)}
-                className="w-full px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded text-xs hover:bg-red-100">
-                Delete block
-              </button>
+              </div>
             </div>
           )}
 
